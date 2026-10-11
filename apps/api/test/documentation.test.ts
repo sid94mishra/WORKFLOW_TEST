@@ -15,4 +15,21 @@ describe('Iteration 2 README documentation', () => {
     expect(readme).toContain('blocks loopback/private/link-local/metadata and reserved ranges');
     expect(readme).toContain('pins validated DNS answers');
   });
+
+  it('documents iteration 3 channels, payloads, public status, badges, and security notes', () => {
+    for (const text of [
+      '/api/v1/channels',
+      'incident.opened',
+      'Slack',
+      '/status',
+      '/api/v1/status',
+      '/badge/:monitorId.svg',
+      '![uptime]',
+      'public',
+      'metadata addresses remain blocked',
+      'Channel validation and each delivery',
+      'also apply the egress policy',
+    ])
+      expect(readme).toContain(text);
+  });
 });

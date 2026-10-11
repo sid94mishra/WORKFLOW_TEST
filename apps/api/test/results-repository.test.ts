@@ -19,6 +19,7 @@ const create = () =>
     expectedStatus: 200,
     keyword: null,
     enabled: true,
+    public: false,
     createdAt: '2026-10-11T00:00:00.000Z',
   });
 const outcome = (ok: boolean) => ({

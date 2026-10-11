@@ -70,6 +70,56 @@ describe('migrate', () => {
     expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([
       { version: 1 },
       { version: 2 },
+      { version: 3 },
+    ]);
+  });
+
+  it('applies migration 003 to a v2 database and backfills daily uptime', () => {
+    db.exec(
+      `CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL);`,
+    );
+    db.exec(readFileSync(new URL('../migrations/001_init.sql', import.meta.url), 'utf8'));
+    db.prepare('INSERT INTO schema_migrations VALUES (?, ?, ?)').run(
+      1,
+      '001_init.sql',
+      '2026-01-01T00:00:00.000Z',
+    );
+    db.exec(readFileSync(new URL('../migrations/002_scheduler.sql', import.meta.url), 'utf8'));
+    db.prepare('INSERT INTO schema_migrations VALUES (?, ?, ?)').run(
+      2,
+      '002_scheduler.sql',
+      '2026-01-01T00:00:00.000Z',
+    );
+    const monitorId = '00000000-0000-4000-8000-000000000001';
+    db.prepare(
+      `INSERT INTO monitors (id,name,url,method,interval_seconds,timeout_ms,expected_status,keyword,enabled,status,consecutive_failures,last_checked_at,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ).run(
+      monitorId,
+      'Example',
+      'https://example.test',
+      'GET',
+      60,
+      1000,
+      200,
+      null,
+      1,
+      'up',
+      0,
+      null,
+      '2026-01-01T00:00:00.000Z',
+    );
+    const result = db.prepare(
+      'INSERT INTO check_results (id,monitor_id,checked_at,ok,status_code,latency_ms,error,keyword_matched,status) VALUES (?,?,?,?,?,?,?,?,?)',
+    );
+    result.run('one', monitorId, '2026-10-10T23:59:59.999Z', 1, 200, 1, null, null, 'up');
+    result.run('two', monitorId, '2026-10-11T00:00:00.000Z', 0, null, 1, 'down', null, 'down');
+    migrate(db);
+    expect(
+      db.prepare('SELECT monitor_id,day,total_checks,ok_checks FROM daily_uptime').all(),
+    ).toEqual([
+      { monitor_id: monitorId, day: '2026-10-10', total_checks: 1, ok_checks: 1 },
+      { monitor_id: monitorId, day: '2026-10-11', total_checks: 1, ok_checks: 0 },
     ]);
   });
 

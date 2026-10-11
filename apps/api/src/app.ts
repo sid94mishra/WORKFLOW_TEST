@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import type { HealthResponse } from '@pulse/shared';
-import { runHttpCheck } from '@pulse/checker';
+import { postJson, runHttpCheck, type ResolveHost } from '@pulse/checker';
 import { openDatabase } from './db.js';
 import { migrate } from './migrate.js';
 import { MonitorRepository } from './monitors/repository.js';
@@ -9,6 +9,12 @@ import { monitorRoutes } from './monitors/routes.js';
 import { ResultRepository } from './results/repository.js';
 import { Scheduler, type SchedulerDeps } from './scheduler/scheduler.js';
 import { apiError } from './errors.js';
+import { ChannelRepository, DeliveryRepository } from './channels/repository.js';
+import { channelRoutes } from './channels/routes.js';
+import { Notifier } from './notifications/notifier.js';
+import { incidentRoutes } from './incidents/routes.js';
+import { statusRoutes } from './status/routes.js';
+import { badgeRoutes } from './badges/routes.js';
 
 // `../package.json` resolves to apps/api/package.json from both src/ and dist/.
 const { version } = JSON.parse(
@@ -17,7 +23,8 @@ const { version } = JSON.parse(
 
 export type SchedulerOptions = {
   maxConcurrency: number;
-  allowPrivate: boolean;
+  /** Deprecated compatibility option; top-level allowPrivate takes precedence. */
+  allowPrivate?: boolean;
   runCheck?: SchedulerDeps['runCheck'];
   random?: () => number;
 };
@@ -32,6 +39,12 @@ export async function buildApp(opts: {
   databasePath: string;
   logger?: boolean | object;
   scheduler?: false | SchedulerOptions;
+  allowPrivate?: boolean;
+  egress?: {
+    resolveHost?: ResolveHost;
+    fetch?: NonNullable<Parameters<typeof runHttpCheck>[1]>['fetch'];
+  };
+  notifier?: { maxConcurrency?: number; retryDelaysMs?: readonly number[] };
 }): Promise<FastifyInstance> {
   const db = openDatabase(opts.databasePath);
   try {
@@ -45,15 +58,45 @@ export async function buildApp(opts: {
   app.decorate('db', db);
   const monitors = new MonitorRepository(db);
   const results = new ResultRepository(db);
+  const channels = new ChannelRepository(db);
+  const deliveries = new DeliveryRepository(db);
+  const notifier = new Notifier({
+    listChannels: (id) => channels.listEnabledForMonitor(id),
+    getChannel: (id) => channels.get(id),
+    send: (channel, body) =>
+      postJson(channel.url, body, {
+        allowPrivate: opts.allowPrivate ?? false,
+        resolveHost: opts.egress?.resolveHost,
+        fetch: opts.egress?.fetch,
+        headers: {
+          'user-agent': 'Pulse/0.1 (+notifications)',
+          ...(channel.kind === 'webhook'
+            ? { 'x-pulse-event': (body as { event?: string }).event ?? 'test' }
+            : {}),
+        },
+      }),
+    recordAttempt: (attempt) => {
+      deliveries.record(attempt);
+    },
+    maxConcurrency: opts.notifier?.maxConcurrency,
+    retryDelaysMs: opts.notifier?.retryDelaysMs,
+    log: app.log,
+  });
   const schedulerOptions = opts.scheduler === false ? undefined : opts.scheduler;
   const scheduler = schedulerOptions
     ? new Scheduler({
         listEnabled: () => monitors.listEnabled(),
         runCheck:
           schedulerOptions.runCheck ??
-          ((monitor) => runHttpCheck(monitor, { allowPrivate: schedulerOptions.allowPrivate })),
+          ((monitor) =>
+            runHttpCheck(monitor, {
+              allowPrivate: opts.allowPrivate ?? schedulerOptions.allowPrivate ?? false,
+              resolveHost: opts.egress?.resolveHost,
+              fetch: opts.egress?.fetch,
+            })),
         record: (monitorId, outcome) => {
-          results.record(monitorId, outcome);
+          const recorded = results.record(monitorId, outcome);
+          if (recorded?.event) notifier.enqueue(recorded.event);
         },
         maxConcurrency: schedulerOptions.maxConcurrency,
         random: schedulerOptions.random,
@@ -66,6 +109,7 @@ export async function buildApp(opts: {
   });
   app.addHook('onClose', async () => {
     await scheduler?.stop();
+    await notifier.stop();
     db.close();
   });
 
@@ -85,6 +129,13 @@ export async function buildApp(opts: {
   });
 
   monitorRoutes(app, monitors, results, scheduler);
+  incidentRoutes(app, db);
+  channelRoutes(app, channels, monitors, deliveries, notifier, {
+    allowPrivate: opts.allowPrivate ?? false,
+    resolveHost: opts.egress?.resolveHost,
+  });
+  statusRoutes(app, db);
+  badgeRoutes(app, monitors, results);
 
   app.setErrorHandler((error: FastifyError, request, reply) => {
     if (

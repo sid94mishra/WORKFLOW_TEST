@@ -91,4 +91,24 @@ describe('MonitorDetail', () => {
     expect(await screen.findByRole('heading', { name: 'Alpha' })).toBeInTheDocument();
     expect(getMonitor).toHaveBeenCalledTimes(2);
   });
+
+  it('toggles public and shows badge snippets only for public monitors', async () => {
+    const updateMonitor = vi.fn().mockResolvedValue({ ...m, public: true });
+    const client = fakeClient({
+      getMonitor: vi.fn().mockResolvedValue(m),
+      getUptime: vi.fn().mockResolvedValue(makeUptime()),
+      updateMonitor,
+    });
+    render(<MonitorDetail id={m.id} client={client} />);
+    await screen.findByRole('heading', { name: 'Alpha' });
+    expect(screen.getByText('Make this monitor public to get a status badge.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Uptime badge (Markdown)')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText('Show on public status page'));
+    expect(updateMonitor).toHaveBeenCalledWith(m.id, { public: true });
+    expect(await screen.findByLabelText('Uptime badge (Markdown)')).toHaveValue(
+      `![uptime](${window.location.origin}/badge/${m.id}.svg)`,
+    );
+    expect(screen.getByLabelText('Status badge (Markdown)')).toBeInTheDocument();
+    expect(screen.queryByText('Make this monitor public to get a status badge.')).toBeNull();
+  });
 });

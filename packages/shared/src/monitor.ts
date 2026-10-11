@@ -8,6 +8,7 @@ export const MONITOR_DEFAULTS = {
   timeoutMs: 10_000,
   expectedStatus: 200,
   enabled: true,
+  public: false,
 } as const;
 export const MONITOR_LIMITS = {
   nameMaxLength: 100,
@@ -41,6 +42,7 @@ const fields = {
     .max(MONITOR_LIMITS.expectedStatus.max),
   keyword,
   enabled: z.boolean(),
+  public: z.boolean(),
 };
 
 const headKeywordRule = <T extends { method?: HttpMethod; keyword?: string | null }>(
@@ -60,6 +62,7 @@ export const MonitorSchema = z
   .object({
     id: z.uuid(),
     ...fields,
+    public: fields.public.default(MONITOR_DEFAULTS.public),
     status: MonitorStatusSchema,
     lastCheckedAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime(),
@@ -76,6 +79,7 @@ export const MonitorCreateSchema = z
     expectedStatus: fields.expectedStatus.default(MONITOR_DEFAULTS.expectedStatus),
     keyword: keyword.optional().default(null),
     enabled: fields.enabled.default(MONITOR_DEFAULTS.enabled),
+    public: fields.public.default(MONITOR_DEFAULTS.public),
   })
   .strict()
   .superRefine(headKeywordRule);
@@ -89,6 +93,7 @@ export const MonitorUpdateSchema = z
     expectedStatus: fields.expectedStatus.optional(),
     keyword: keyword.optional(),
     enabled: fields.enabled.optional(),
+    public: fields.public.optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {

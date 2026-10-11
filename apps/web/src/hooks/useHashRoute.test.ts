@@ -1,0 +1,16 @@
+import { describe, expect, it } from 'vitest';
+import { parseHash } from './useHashRoute';
+
+describe('parseHash', () => {
+  it.each([
+    ['', { name: 'dashboard' }],
+    ['#/', { name: 'dashboard' }],
+    ['#/incidents', { name: 'incidents' }],
+    ['#/channels/', { name: 'channels' }],
+    ['#/monitors/abc', { name: 'monitor', id: 'abc' }],
+    ['#/monitors/%E0', { name: 'dashboard' }],
+    ['#/nope', { name: 'dashboard' }],
+  ])('%s', (hash, route) => {
+    expect(parseHash(hash)).toEqual(route);
+  });
+});

@@ -1,13 +1,13 @@
 # Pulse
 
-Pulse is a self-hosted uptime monitor that will also serve public status pages. You define HTTP
+Pulse is a self-hosted uptime monitor with incident notifications, public status pages and badges. You define HTTP
 monitors (URL, method, expected status, optional keyword, interval, timeout). Pulse checks them
 and records the results. It is built on free, open-source software only and stores everything in
 a single SQLite file.
 
-> **Status: Iteration 2 (Scheduled checks).** Pulse schedules enabled monitors, safely checks
-> HTTP(S) targets, records outcomes and exposes monitor status and uptime summaries. Public status
-> pages, auth and notifications come in later iterations.
+> **Status: Iteration 3 (Incidents, notifications and public status).** Pulse schedules enabled
+> monitors, safely checks HTTP(S) targets, records incident lifecycles, delivers webhooks, and
+> publishes public status pages and badges. Authentication comes in a later iteration.
 
 ## Layout
 
@@ -78,16 +78,25 @@ Migrations in `apps/api/migrations/*.sql` are applied automatically on startup a
 
 ## API (v1)
 
-| Method   | Path                           | Result                                                    |
-| -------- | ------------------------------ | --------------------------------------------------------- |
-| `GET`    | `/health`                      | `200 { status: "ok", version, uptimeSeconds }`            |
-| `GET`    | `/api/v1/monitors`             | `200 { data: Monitor[] }` (oldest first)                  |
-| `POST`   | `/api/v1/monitors`             | `201 { data: Monitor }` + `Location` header               |
-| `GET`    | `/api/v1/monitors/:id`         | `200 { data: Monitor }` or `404`                          |
-| `GET`    | `/api/v1/monitors/:id/results` | Recent check results (`limit`, default 50, max 500)       |
-| `GET`    | `/api/v1/monitors/:id/uptime`  | Uptime and latency summary (`window`: `24h`, `7d`, `30d`) |
-| `PATCH`  | `/api/v1/monitors/:id`         | `200 { data: Monitor }` (partial update)                  |
-| `DELETE` | `/api/v1/monitors/:id`         | `204`                                                     |
+| Method             | Path                              | Result                                                    |
+| ------------------ | --------------------------------- | --------------------------------------------------------- |
+| `GET`              | `/health`                         | `200 { status: "ok", version, uptimeSeconds }`            |
+| `GET`              | `/api/v1/monitors`                | `200 { data: Monitor[] }` (oldest first)                  |
+| `POST`             | `/api/v1/monitors`                | `201 { data: Monitor }` + `Location` header               |
+| `GET`              | `/api/v1/monitors/:id`            | `200 { data: Monitor }` or `404`                          |
+| `GET`              | `/api/v1/monitors/:id/results`    | Recent check results (`limit`, default 50, max 500)       |
+| `GET`              | `/api/v1/monitors/:id/uptime`     | Uptime and latency summary (`window`: `24h`, `7d`, `30d`) |
+| `PATCH`            | `/api/v1/monitors/:id`            | `200 { data: Monitor }` (partial update)                  |
+| `DELETE`           | `/api/v1/monitors/:id`            | `204`                                                     |
+| `GET`              | `/api/v1/incidents`               | Incidents, open first (`status`, `monitorId`, `limit`)    |
+| `GET`              | `/api/v1/incidents/:id`           | One incident                                              |
+| `GET/POST`         | `/api/v1/channels`                | List or create notification channels                      |
+| `GET/PATCH/DELETE` | `/api/v1/channels/:id`            | Read, update or delete a channel                          |
+| `POST`             | `/api/v1/channels/:id/test`       | Send a test notification                                  |
+| `GET`              | `/api/v1/channels/:id/deliveries` | Recent delivery attempts                                  |
+| `GET`              | `/api/v1/status`                  | Public status page data                                   |
+| `GET`              | `/status`                         | Public no-JavaScript status page                          |
+| `GET`              | `/badge/:monitorId.svg`           | Public monitor uptime or status badge                     |
 
 Errors use `{ error: { code, message, issues? } }`. Codes are `VALIDATION_ERROR`, `BAD_REQUEST`,
 `NOT_FOUND`, `UNSUPPORTED_MEDIA_TYPE` and `INTERNAL_ERROR`. The full contract and the field rules
@@ -101,6 +110,25 @@ curl -X POST http://127.0.0.1:3000/api/v1/monitors \
   -d '{"name":"Example","url":"https://example.com","keyword":"Example Domain"}'
 ```
 
+Set a monitor's `public` flag to `true` to include it in `/status` and make a badge available.
+Embed a public monitor's uptime badge with:
+
+```md
+![uptime](https://pulse.example.com/badge/MONITOR_UUID.svg)
+```
+
+## Incidents and notification channels
+
+An incident opens when a monitor reaches `down` (three consecutive failed checks), and resolves
+on the next successful check. Create `webhook` or `slack` channels and subscribe them to monitor
+ids. Pulse sends `incident.opened` and `incident.resolved` JSON webhook payloads containing the
+event, sent time, channel, monitor, and incident; Slack channels receive a `{ "text": "…" }`
+payload. Delivery is retried up to three times and the most recent 20 attempts per channel are
+available from the deliveries endpoint.
+
+`/status` renders the same public data as `/api/v1/status` without JavaScript and shows 90 UTC
+daily uptime bars. Use `/badge/:monitorId.svg?type=status` for a current-status badge.
+
 ## Security notes
 
 Iteration 1 has **no authentication** and binds to `127.0.0.1` by default. Do not expose the API
@@ -109,6 +137,11 @@ arrives in iteration 4. The checker resolves and validates every address on the 
 every redirect, blocks loopback/private/link-local/metadata and reserved ranges by default, and
 pins validated DNS answers for the request. `PULSE_ALLOW_PRIVATE=1` is only for local development:
 metadata addresses remain blocked.
+
+Notification channel URLs may contain secret tokens and are readable through the API because this
+iteration has no authentication. Protect the API accordingly. Channel validation and each delivery
+also apply the egress policy; metadata addresses are always blocked, even with
+`PULSE_ALLOW_PRIVATE=1`.
 
 The scheduler is in-process and a Pulse deployment must use a single API instance for each SQLite
 database. Monitor status begins as `pending`, becomes `up` after success, `degraded` after one or
@@ -119,6 +152,7 @@ two consecutive failures, and `down` after three; disabled monitors are paused a
 
 - [Iteration 1 spec](docs/specs/iteration-1.md)
 - [Iteration 2 spec](docs/specs/check-scheduler-and-ssrf-safe-checker.md)
+- [Iteration 3 spec](docs/specs/incidents-webhook-notifications-status-page-and-badges.md)
 - [ADR 0001 – Stack](docs/adr/0001-stack.md)
 - [ADR 0002 – SSRF egress policy](docs/adr/0002-ssrf-egress-policy.md)
 - [ADR 0003 – In-process scheduler](docs/adr/0003-in-process-scheduler.md)

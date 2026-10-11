@@ -13,6 +13,7 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
+    "postinstall": "pnpm --filter @pulse/api exec npm rebuild better-sqlite3 --silent",
     "dev": "pnpm --parallel --filter @pulse/api --filter @pulse/web dev",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

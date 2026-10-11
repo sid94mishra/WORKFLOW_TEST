@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { conditions: ['source', ...defaultClientConditions] },
   server: {
-    proxy: { '/api': apiUrl, '/health': apiUrl },
+    proxy: { '/api': apiUrl, '/health': apiUrl, '/status': apiUrl, '/badge': apiUrl },
   },
   test: {
     environment: 'jsdom',

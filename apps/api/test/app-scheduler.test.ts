@@ -68,4 +68,60 @@ describe('buildApp scheduler wiring', () => {
     expect(() => database.prepare('SELECT 1').get()).toThrow();
     app = undefined;
   });
+
+  it('keeps checks independent from a hanging notification and shuts down without retries', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(() => new Promise<Response>(() => {}));
+    const runCheck = vi.fn(async (monitor: { id: string }) => ({
+      ...outcome,
+      ok: false,
+      statusCode: null,
+      error: `failure-${monitor.id}`,
+    }));
+    app = await buildApp({
+      databasePath: ':memory:',
+      egress: {
+        resolveHost: async () => [{ address: '203.0.113.10', family: 4 }],
+        fetch: fetch as never,
+      },
+      scheduler: { maxConcurrency: 2, runCheck, random: () => 0 },
+    });
+    await app.ready();
+    vi.useFakeTimers({
+      toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
+    const createMonitor = async (name: string) =>
+      (
+        await app!.inject({
+          method: 'POST',
+          url: '/api/v1/monitors',
+          headers: { 'content-type': 'application/json' },
+          payload: { name, url: 'https://monitor.test' },
+        })
+      ).json().data;
+    const first = await createMonitor('First');
+    const second = await createMonitor('Second');
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/channels',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        name: 'Ops',
+        kind: 'webhook',
+        url: 'https://hooks.test/hook',
+        monitorIds: [first.id],
+      },
+    });
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(54_000);
+    await vi.advanceTimersByTimeAsync(54_000);
+    expect(runCheck).toHaveBeenCalledTimes(6);
+    expect((app.scheduler as { inFlight: number }).inFlight).toBe(0);
+    expect(second.id).toBeDefined();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const closing = app.close();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await closing;
+    expect(fetch).toHaveBeenCalledTimes(1);
+    app = undefined;
+  });
 });

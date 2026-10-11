@@ -6,10 +6,10 @@ import {
   MonitorCreateSchema,
   type ApiIssue,
   type HttpMethod,
-  type Monitor,
   type MonitorCreateInput,
 } from '@pulse/shared';
 import { api, ApiClientError, type ApiClient } from '../api/client';
+import type { Monitor } from '../api/types';
 
 export interface AddMonitorFormProps {
   onCreated: (m: Monitor) => void;
