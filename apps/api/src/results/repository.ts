@@ -74,6 +74,7 @@ export class ResultRepository {
   private readonly recordTransaction: (
     monitorId: string,
     outcome: CheckOutcome,
+    expectedConfigVersion?: number,
   ) => RecordResult | undefined;
 
   constructor(private readonly db: SqliteDatabase) {
@@ -99,89 +100,102 @@ export class ResultRepository {
     const resolveIncident = db.prepare(
       `UPDATE incidents SET status='resolved', resolved_at=?, duration_seconds=? WHERE id=?`,
     );
-    this.recordTransaction = db.transaction((monitorId: string, outcome: CheckOutcome) => {
-      const monitor = selectFailures.get(monitorId) as
-        ({ consecutive_failures: number } & Record<string, unknown>) | undefined;
-      if (!monitor) return undefined;
-      const failures = outcome.ok ? 0 : monitor.consecutive_failures + 1;
-      const status: CheckStatus = outcome.ok
-        ? 'up'
-        : failures >= DOWN_AFTER_CONSECUTIVE_FAILURES
-          ? 'down'
-          : 'degraded';
-      const result: CheckResult = { id: randomUUID(), monitorId, ...outcome, status };
-      insertResult.run(
-        result.id,
-        result.monitorId,
-        result.checkedAt,
-        result.ok ? 1 : 0,
-        result.statusCode,
-        result.latencyMs,
-        result.error,
-        result.keywordMatched === null ? null : result.keywordMatched ? 1 : 0,
-        result.status,
-      );
-      updateMonitor.run(status, failures, outcome.checkedAt, monitorId);
-      upsertDaily.run(monitorId, outcome.checkedAt, outcome.ok ? 1 : 0);
-      let event: IncidentEvent | null = null;
-      const open = findOpen.get(monitorId) as IncidentRow | undefined;
-      const monitorObject: Monitor = {
-        id: String(monitor.id),
-        name: String(monitor.name),
-        url: String(monitor.url),
-        method: monitor.method as Monitor['method'],
-        intervalSeconds: Number(monitor.interval_seconds),
-        timeoutMs: Number(monitor.timeout_ms),
-        expectedStatus: Number(monitor.expected_status),
-        keyword: monitor.keyword as string | null,
-        enabled: Number(monitor.enabled) === 1,
-        public: Number(monitor.public) === 1,
-        status,
-        lastCheckedAt: outcome.checkedAt,
-        createdAt: String(monitor.created_at),
-      };
-      if (status === 'down' && !open) {
-        const incidentId = randomUUID();
-        insertIncident.run(incidentId, monitorId, outcome.error, outcome.checkedAt);
-        event = {
-          type: 'incident.opened',
-          incident: {
-            id: incidentId,
-            monitorId,
-            monitorName: monitorObject.name,
-            status: 'open',
-            cause: outcome.error,
-            startedAt: outcome.checkedAt,
-            resolvedAt: null,
-            durationSeconds: null,
-          },
-          monitor: monitorObject,
-        };
-      } else if (status === 'up' && open) {
-        const durationSeconds = Math.max(
-          0,
-          Math.round(
-            (new Date(outcome.checkedAt).getTime() - new Date(open.started_at).getTime()) / 1000,
-          ),
+    this.recordTransaction = db.transaction(
+      (monitorId: string, outcome: CheckOutcome, expectedConfigVersion?: number) => {
+        const monitor = selectFailures.get(monitorId) as
+          | ({ consecutive_failures: number; config_version: number } & Record<string, unknown>)
+          | undefined;
+        if (!monitor) return undefined;
+        if (
+          expectedConfigVersion !== undefined &&
+          monitor.config_version !== expectedConfigVersion
+        ) {
+          return undefined;
+        }
+        const failures = outcome.ok ? 0 : monitor.consecutive_failures + 1;
+        const status: CheckStatus = outcome.ok
+          ? 'up'
+          : failures >= DOWN_AFTER_CONSECUTIVE_FAILURES
+            ? 'down'
+            : 'degraded';
+        const result: CheckResult = { id: randomUUID(), monitorId, ...outcome, status };
+        insertResult.run(
+          result.id,
+          result.monitorId,
+          result.checkedAt,
+          result.ok ? 1 : 0,
+          result.statusCode,
+          result.latencyMs,
+          result.error,
+          result.keywordMatched === null ? null : result.keywordMatched ? 1 : 0,
+          result.status,
         );
-        resolveIncident.run(outcome.checkedAt, durationSeconds, open.id);
-        event = {
-          type: 'incident.resolved',
-          incident: {
-            ...toIncident(open),
-            status: 'resolved',
-            resolvedAt: outcome.checkedAt,
-            durationSeconds,
-          },
-          monitor: monitorObject,
+        updateMonitor.run(status, failures, outcome.checkedAt, monitorId);
+        upsertDaily.run(monitorId, outcome.checkedAt, outcome.ok ? 1 : 0);
+        let event: IncidentEvent | null = null;
+        const open = findOpen.get(monitorId) as IncidentRow | undefined;
+        const monitorObject: Monitor = {
+          id: String(monitor.id),
+          name: String(monitor.name),
+          url: String(monitor.url),
+          method: monitor.method as Monitor['method'],
+          intervalSeconds: Number(monitor.interval_seconds),
+          timeoutMs: Number(monitor.timeout_ms),
+          expectedStatus: Number(monitor.expected_status),
+          keyword: monitor.keyword as string | null,
+          enabled: Number(monitor.enabled) === 1,
+          public: Number(monitor.public) === 1,
+          status,
+          lastCheckedAt: outcome.checkedAt,
+          createdAt: String(monitor.created_at),
         };
-      }
-      return { ...result, result, event };
-    });
+        if (status === 'down' && !open) {
+          const incidentId = randomUUID();
+          insertIncident.run(incidentId, monitorId, outcome.error, outcome.checkedAt);
+          event = {
+            type: 'incident.opened',
+            incident: {
+              id: incidentId,
+              monitorId,
+              monitorName: monitorObject.name,
+              status: 'open',
+              cause: outcome.error,
+              startedAt: outcome.checkedAt,
+              resolvedAt: null,
+              durationSeconds: null,
+            },
+            monitor: monitorObject,
+          };
+        } else if (status === 'up' && open) {
+          const durationSeconds = Math.max(
+            0,
+            Math.round(
+              (new Date(outcome.checkedAt).getTime() - new Date(open.started_at).getTime()) / 1000,
+            ),
+          );
+          resolveIncident.run(outcome.checkedAt, durationSeconds, open.id);
+          event = {
+            type: 'incident.resolved',
+            incident: {
+              ...toIncident(open),
+              status: 'resolved',
+              resolvedAt: outcome.checkedAt,
+              durationSeconds,
+            },
+            monitor: monitorObject,
+          };
+        }
+        return { ...result, result, event };
+      },
+    );
   }
 
-  record(monitorId: string, outcome: CheckOutcome): RecordResult | undefined {
-    return this.recordTransaction(monitorId, outcome);
+  record(
+    monitorId: string,
+    outcome: CheckOutcome,
+    expectedConfigVersion?: number,
+  ): RecordResult | undefined {
+    return this.recordTransaction(monitorId, outcome, expectedConfigVersion);
   }
 
   listRecent(monitorId: string, limit: number): CheckResult[] {

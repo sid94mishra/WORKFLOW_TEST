@@ -15,7 +15,10 @@ type Row = {
   status: Monitor['status'];
   last_checked_at: string | null;
   created_at: string;
+  config_version: number;
 };
+
+export type MonitorSnapshot = Monitor & { configVersion: number };
 
 /** camelCase field → snake_case column for every updatable field. */
 const COLUMNS: Record<keyof MonitorUpdate, string> = {
@@ -48,6 +51,10 @@ function toMonitor(row: Row): Monitor {
   };
 }
 
+function toSnapshot(row: Row): MonitorSnapshot {
+  return { ...toMonitor(row), configVersion: row.config_version };
+}
+
 export class MonitorRepository {
   constructor(private readonly db: SqliteDatabase) {}
 
@@ -57,12 +64,12 @@ export class MonitorRepository {
     ).map(toMonitor);
   }
 
-  listEnabled(): Monitor[] {
+  listEnabled(): MonitorSnapshot[] {
     return (
       this.db
         .prepare('SELECT * FROM monitors WHERE enabled = 1 ORDER BY created_at ASC, rowid ASC')
         .all() as Row[]
-    ).map(toMonitor);
+    ).map(toSnapshot);
   }
 
   get(id: string): Monitor | undefined {
@@ -70,7 +77,7 @@ export class MonitorRepository {
     return row && toMonitor(row);
   }
 
-  create(input: MonitorCreate & Pick<Monitor, 'id' | 'createdAt'>): Monitor {
+  create(input: MonitorCreate & Pick<Monitor, 'id' | 'createdAt'>): MonitorSnapshot {
     this.db
       .prepare(
         `
@@ -84,10 +91,10 @@ export class MonitorRepository {
         `,
       )
       .run({ ...input, enabled: input.enabled ? 1 : 0, public: input.public ? 1 : 0 });
-    return this.get(input.id)!;
+    return this.getSnapshot(input.id)!;
   }
 
-  update(id: string, patch: MonitorUpdate): Monitor {
+  update(id: string, patch: MonitorUpdate): MonitorSnapshot {
     // Keys come from the strict MonitorUpdateSchema, so only whitelisted columns reach the SQL.
     const columns: string[] = [];
     const values: unknown[] = [];
@@ -101,12 +108,21 @@ export class MonitorRepository {
         (key) => patch[key as keyof MonitorUpdate] !== undefined,
       )
     ) {
-      columns.push("status = 'pending'", 'consecutive_failures = 0');
+      columns.push(
+        "status = 'pending'",
+        'consecutive_failures = 0',
+        'config_version = config_version + 1',
+      );
     }
     if (columns.length > 0) {
       this.db.prepare(`UPDATE monitors SET ${columns.join(', ')} WHERE id = ?`).run(...values, id);
     }
-    return this.get(id)!;
+    return this.getSnapshot(id)!;
+  }
+
+  private getSnapshot(id: string): MonitorSnapshot | undefined {
+    const row = this.db.prepare('SELECT * FROM monitors WHERE id = ?').get(id) as Row | undefined;
+    return row && toSnapshot(row);
   }
 
   delete(id: string): boolean {

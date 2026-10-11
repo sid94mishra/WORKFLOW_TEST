@@ -57,4 +57,24 @@ describe('result repository', () => {
     expect(monitors.update(id, { name: 'Renamed' }).status).toBe('degraded');
     expect(monitors.update(id, { url: 'https://other.test' })).toMatchObject({ status: 'pending' });
   });
+
+  it('skips stale configuration results without changing monitor, uptime, or incident data', () => {
+    create();
+    monitors.update(id, { url: 'https://other.test' });
+
+    expect(results.record(id, outcome(false), 0)).toBeUndefined();
+    expect(monitors.get(id)).toMatchObject({ status: 'pending', lastCheckedAt: null });
+    expect(db.prepare('SELECT * FROM check_results').all()).toEqual([]);
+    expect(db.prepare('SELECT * FROM daily_uptime').all()).toEqual([]);
+    expect(db.prepare('SELECT * FROM incidents').all()).toEqual([]);
+  });
+
+  it('records results for a matching configuration version and when the version is omitted', () => {
+    create();
+    monitors.update(id, { url: 'https://other.test' });
+
+    expect(results.record(id, outcome(true), 1)?.status).toBe('up');
+    expect(results.record(id, outcome(false))?.status).toBe('degraded');
+    expect(db.prepare('SELECT count(*) AS count FROM check_results').get()).toEqual({ count: 2 });
+  });
 });

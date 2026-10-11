@@ -1,0 +1,1 @@
+ALTER TABLE monitors ADD COLUMN config_version INTEGER NOT NULL DEFAULT 0;

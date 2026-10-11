@@ -9,13 +9,17 @@ import {
 } from '@pulse/shared';
 import type { ZodError } from 'zod';
 import { apiError, issues } from '../errors.js';
-import type { MonitorRepository } from './repository.js';
+import type { MonitorRepository, MonitorSnapshot } from './repository.js';
 import type { ResultRepository } from '../results/repository.js';
 import type { Scheduler } from '../scheduler/scheduler.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type IdParams = { Params: { id: string } };
+
+function publicMonitor({ configVersion: _configVersion, ...monitor }: MonitorSnapshot) {
+  return monitor;
+}
 
 function isUuid(id: string): boolean {
   return UUID_PATTERN.test(id);
@@ -92,7 +96,7 @@ export function monitorRoutes(
     return reply
       .code(201)
       .header('location', `/api/v1/monitors/${monitor.id}`)
-      .send({ data: monitor });
+      .send({ data: publicMonitor(monitor) });
   });
 
   app.patch<IdParams>('/api/v1/monitors/:id', async (request, reply) => {
@@ -110,7 +114,7 @@ export function monitorRoutes(
 
     const monitor = repository.update(existing.id, patch.data);
     scheduler?.upsert(monitor);
-    return { data: monitor };
+    return { data: publicMonitor(monitor) };
   });
 
   app.delete<IdParams>('/api/v1/monitors/:id', async (request, reply) => {

@@ -94,8 +94,8 @@ export async function buildApp(opts: {
               resolveHost: opts.egress?.resolveHost,
               fetch: opts.egress?.fetch,
             })),
-        record: (monitorId, outcome) => {
-          const recorded = results.record(monitorId, outcome);
+        record: (monitorId, outcome, configVersion) => {
+          const recorded = results.record(monitorId, outcome, configVersion);
           if (recorded?.event) notifier.enqueue(recorded.event);
         },
         maxConcurrency: schedulerOptions.maxConcurrency,

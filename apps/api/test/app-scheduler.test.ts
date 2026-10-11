@@ -20,11 +20,15 @@ afterEach(async () => {
 });
 
 describe('buildApp scheduler wiring', () => {
-  it('starts scheduled checks and records their status', async () => {
+  it('records a scheduled result when the monitor is not patched while the check runs', async () => {
     const runCheck = vi.fn(async () => outcome);
     app = await buildApp({
       databasePath: ':memory:',
-      scheduler: { maxConcurrency: 1, allowPrivate: true, runCheck, random: () => 0 },
+      scheduler: { maxConcurrency: 1, allowPrivate: true, runCheck, random: () => 0.5 },
+    });
+    await app.ready();
+    vi.useFakeTimers({
+      toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
     });
     const created = await app.inject({
       method: 'POST',
@@ -33,12 +37,61 @@ describe('buildApp scheduler wiring', () => {
       payload: { name: 'Scheduled', url: 'https://example.test' },
     });
     const id = created.json().data.id as string;
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await vi.advanceTimersByTimeAsync(3_000);
     expect(runCheck).toHaveBeenCalledTimes(1);
     expect((await app.inject(`/api/v1/monitors/${id}`)).json().data).toMatchObject({
       status: 'up',
       lastCheckedAt: outcome.checkedAt,
     });
+    expect((await app.inject(`/api/v1/monitors/${id}/results`)).json().data).toHaveLength(1);
+  });
+
+  it('does not record an in-flight result after a target-changing patch', async () => {
+    let resolveCheck!: (value: typeof outcome) => void;
+    const runCheck = vi.fn(
+      () => new Promise<typeof outcome>((resolve) => (resolveCheck = resolve)),
+    );
+    app = await buildApp({
+      databasePath: ':memory:',
+      scheduler: { maxConcurrency: 1, allowPrivate: true, runCheck, random: () => 0.5 },
+    });
+    await app.ready();
+    vi.useFakeTimers({
+      toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/monitors',
+      headers: { 'content-type': 'application/json' },
+      payload: { name: 'Scheduled', url: 'https://a.example.test' },
+    });
+    const id = created.json().data.id as string;
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(runCheck).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'https://a.example.test' }),
+    );
+
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/monitors/${id}`,
+      headers: { 'content-type': 'application/json' },
+      payload: { url: 'https://b.example.test' },
+    });
+    expect(patch.json().data.status).toBe('pending');
+
+    resolveCheck(outcome);
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await app.inject(`/api/v1/monitors/${id}`)).json().data).toMatchObject({
+      status: 'pending',
+      lastCheckedAt: null,
+    });
+    expect((await app.inject(`/api/v1/monitors/${id}/results`)).json().data).toEqual([]);
+    const database = (
+      app as FastifyInstance & {
+        db: { prepare(sql: string): { all(): unknown[] } };
+      }
+    ).db;
+    expect(database.prepare('SELECT * FROM incidents').all()).toEqual([]);
   });
 
   it('does not close the database until an in-flight check has recorded', async () => {
