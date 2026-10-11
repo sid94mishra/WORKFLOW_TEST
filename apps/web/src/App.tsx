@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Monitor } from '@pulse/shared';
+import type { Monitor } from './api/types';
 import { api, ApiClientError, type ApiClient } from './api/client';
 import { AddMonitorForm } from './components/AddMonitorForm';
+import { MonitorDetail } from './components/MonitorDetail';
+import { useHashRoute } from './hooks/useHashRoute';
 import { MonitorList, type MonitorListState } from './components/MonitorList';
 
 export function App({ client = api }: { client?: ApiClient }) {
   const [state, setState] = useState<MonitorListState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
+  const route = useHashRoute();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -40,18 +43,24 @@ export function App({ client = api }: { client?: ApiClient }) {
         </div>
       </header>
       <main className="mx-auto max-w-5xl space-y-10 px-4 py-8">
-        <section aria-labelledby="monitors-heading">
-          <h2 id="monitors-heading" className="mb-4 text-xl font-semibold">
-            Monitors
-          </h2>
-          <MonitorList state={state} onRetry={retry} />
-        </section>
-        <section aria-labelledby="add-heading">
-          <h2 id="add-heading" className="mb-4 text-xl font-semibold">
-            Add monitor
-          </h2>
-          <AddMonitorForm onCreated={onCreated} client={client} />
-        </section>
+        {route.name === 'monitor' ? (
+          <MonitorDetail id={route.id} client={client} />
+        ) : (
+          <>
+            <section aria-labelledby="monitors-heading">
+              <h2 id="monitors-heading" className="mb-4 text-xl font-semibold">
+                Monitors
+              </h2>
+              <MonitorList state={state} onRetry={retry} />
+            </section>
+            <section aria-labelledby="add-heading">
+              <h2 id="add-heading" className="mb-4 text-xl font-semibold">
+                Add monitor
+              </h2>
+              <AddMonitorForm onCreated={onCreated} client={client} />
+            </section>
+          </>
+        )}
       </main>
     </div>
   );

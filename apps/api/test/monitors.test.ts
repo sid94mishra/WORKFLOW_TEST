@@ -88,6 +88,12 @@ describe('monitor validation and errors', () => {
       { name: 'x', url: 'https://x.test', createdAt: '2026-01-01T00:00:00.000Z' },
       [''],
     ],
+    ['client status', { name: 'x', url: 'https://x.test', status: 'up' }, ['']],
+    [
+      'client lastCheckedAt',
+      { name: 'x', url: 'https://x.test', lastCheckedAt: '2026-01-01T00:00:00.000Z' },
+      [''],
+    ],
     [
       'HEAD keyword',
       { name: 'x', url: 'https://x.test', method: 'HEAD', keyword: 'body' },
@@ -227,6 +233,26 @@ describe('monitor updates and deletion', () => {
     expect(response.statusCode).toBe(400);
     expect(response.json().error.code).toBe('VALIDATION_ERROR');
     expect(paths(response)).toContain('');
+  });
+
+  it('rejects read-only status fields in a patch', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    const post = await create({
+      name: 'Example',
+      url: 'https://example.com',
+      status: 'up',
+      lastCheckedAt: new Date().toISOString(),
+    });
+    expect(post.statusCode).toBe(400);
+    const monitor = (await create()).json().data;
+    const response = await json('PATCH', `/api/v1/monitors/${monitor.id}`, { status: 'up' });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe('VALIDATION_ERROR');
+    const lastCheckedAt = await json('PATCH', `/api/v1/monitors/${monitor.id}`, {
+      lastCheckedAt: new Date().toISOString(),
+    });
+    expect(lastCheckedAt.statusCode).toBe(400);
+    expect(lastCheckedAt.json().error.code).toBe('VALIDATION_ERROR');
   });
 
   it('validates HEAD keyword against the merged monitor', async () => {

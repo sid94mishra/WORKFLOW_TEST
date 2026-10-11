@@ -5,10 +5,9 @@ monitors (URL, method, expected status, optional keyword, interval, timeout). Pu
 and records the results. It is built on free, open-source software only and stores everything in
 a single SQLite file.
 
-> **Status: Iteration 1 (Foundation).** You can create, list, update and delete monitors through
-> the REST API, and list or add them in the web dashboard. The HTTP check engine exists and is
-> tested. Scheduled checks, status pages, auth and notifications come in later iterations (see
-> [the iteration 1 spec](docs/specs/iteration-1.md#1-goal-and-scope)).
+> **Status: Iteration 2 (Scheduled checks).** Pulse schedules enabled monitors, safely checks
+> HTTP(S) targets, records outcomes and exposes monitor status and uptime summaries. Public status
+> pages, auth and notifications come in later iterations.
 
 ## Layout
 
@@ -60,12 +59,14 @@ Run the built API with `pnpm build && pnpm --filter @pulse/api start` (or
 
 ### API configuration
 
-| Env var         | Default           | Notes                                     |
-| --------------- | ----------------- | ----------------------------------------- |
-| `PORT`          | `3000`            |                                           |
-| `HOST`          | `127.0.0.1`       | Set `0.0.0.0` to listen on all interfaces |
-| `DATABASE_PATH` | `./data/pulse.db` | Relative to the process working directory |
-| `LOG_LEVEL`     | `info`            | Pino log level                            |
+| Env var                 | Default           | Notes                                          |
+| ----------------------- | ----------------- | ---------------------------------------------- |
+| `PORT`                  | `3000`            |                                                |
+| `HOST`                  | `127.0.0.1`       | Set `0.0.0.0` to listen on all interfaces      |
+| `DATABASE_PATH`         | `./data/pulse.db` | Relative to the process working directory      |
+| `LOG_LEVEL`             | `info`            | Pino log level                                 |
+| `PULSE_MAX_CONCURRENCY` | `8`               | Global check cap; integer 1–64                 |
+| `PULSE_ALLOW_PRIVATE`   | `0`               | `1` permits private targets (development only) |
 
 The parent directory of `DATABASE_PATH` is created if it is missing; use `:memory:` for an
 ephemeral database. `pnpm dev` and `pnpm --filter @pulse/api start` run in `apps/api`, so the
@@ -77,14 +78,16 @@ Migrations in `apps/api/migrations/*.sql` are applied automatically on startup a
 
 ## API (v1)
 
-| Method   | Path                   | Result                                         |
-| -------- | ---------------------- | ---------------------------------------------- |
-| `GET`    | `/health`              | `200 { status: "ok", version, uptimeSeconds }` |
-| `GET`    | `/api/v1/monitors`     | `200 { data: Monitor[] }` (oldest first)       |
-| `POST`   | `/api/v1/monitors`     | `201 { data: Monitor }` + `Location` header    |
-| `GET`    | `/api/v1/monitors/:id` | `200 { data: Monitor }` or `404`               |
-| `PATCH`  | `/api/v1/monitors/:id` | `200 { data: Monitor }` (partial update)       |
-| `DELETE` | `/api/v1/monitors/:id` | `204`                                          |
+| Method   | Path                           | Result                                                    |
+| -------- | ------------------------------ | --------------------------------------------------------- |
+| `GET`    | `/health`                      | `200 { status: "ok", version, uptimeSeconds }`            |
+| `GET`    | `/api/v1/monitors`             | `200 { data: Monitor[] }` (oldest first)                  |
+| `POST`   | `/api/v1/monitors`             | `201 { data: Monitor }` + `Location` header               |
+| `GET`    | `/api/v1/monitors/:id`         | `200 { data: Monitor }` or `404`                          |
+| `GET`    | `/api/v1/monitors/:id/results` | Recent check results (`limit`, default 50, max 500)       |
+| `GET`    | `/api/v1/monitors/:id/uptime`  | Uptime and latency summary (`window`: `24h`, `7d`, `30d`) |
+| `PATCH`  | `/api/v1/monitors/:id`         | `200 { data: Monitor }` (partial update)                  |
+| `DELETE` | `/api/v1/monitors/:id`         | `204`                                                     |
 
 Errors use `{ error: { code, message, issues? } }`. Codes are `VALIDATION_ERROR`, `BAD_REQUEST`,
 `NOT_FOUND`, `UNSUPPORTED_MEDIA_TYPE` and `INTERNAL_ERROR`. The full contract and the field rules
@@ -102,14 +105,23 @@ curl -X POST http://127.0.0.1:3000/api/v1/monitors \
 
 Iteration 1 has **no authentication** and binds to `127.0.0.1` by default. Do not expose the API
 to an untrusted network yet: anyone who can reach it can create, change and delete monitors. Auth
-arrives in iteration 4. Monitor URLs are not restricted to public hosts; once scheduled checks
-exist (iteration 2), a monitor could probe internal addresses, so only trusted users should be able
-to create monitors.
+arrives in iteration 4. The checker resolves and validates every address on the initial request and
+every redirect, blocks loopback/private/link-local/metadata and reserved ranges by default, and
+pins validated DNS answers for the request. `PULSE_ALLOW_PRIVATE=1` is only for local development:
+metadata addresses remain blocked.
+
+The scheduler is in-process and a Pulse deployment must use a single API instance for each SQLite
+database. Monitor status begins as `pending`, becomes `up` after success, `degraded` after one or
+two consecutive failures, and `down` after three; disabled monitors are paused and display as
+`Paused` in the dashboard.
 
 ## Docs
 
 - [Iteration 1 spec](docs/specs/iteration-1.md)
+- [Iteration 2 spec](docs/specs/check-scheduler-and-ssrf-safe-checker.md)
 - [ADR 0001 – Stack](docs/adr/0001-stack.md)
+- [ADR 0002 – SSRF egress policy](docs/adr/0002-ssrf-egress-policy.md)
+- [ADR 0003 – In-process scheduler](docs/adr/0003-in-process-scheduler.md)
 
 ## Contributing
 

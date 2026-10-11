@@ -1,10 +1,13 @@
 import { readFileSync } from 'node:fs';
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import type { HealthResponse } from '@pulse/shared';
+import { runHttpCheck } from '@pulse/checker';
 import { openDatabase } from './db.js';
 import { migrate } from './migrate.js';
 import { MonitorRepository } from './monitors/repository.js';
 import { monitorRoutes } from './monitors/routes.js';
+import { ResultRepository } from './results/repository.js';
+import { Scheduler, type SchedulerDeps } from './scheduler/scheduler.js';
 import { apiError } from './errors.js';
 
 // `../package.json` resolves to apps/api/package.json from both src/ and dist/.
@@ -12,9 +15,23 @@ const { version } = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
 ) as { version: string };
 
+export type SchedulerOptions = {
+  maxConcurrency: number;
+  allowPrivate: boolean;
+  runCheck?: SchedulerDeps['runCheck'];
+  random?: () => number;
+};
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    scheduler?: Scheduler;
+  }
+}
+
 export async function buildApp(opts: {
   databasePath: string;
   logger?: boolean | object;
+  scheduler?: false | SchedulerOptions;
 }): Promise<FastifyInstance> {
   const db = openDatabase(opts.databasePath);
   try {
@@ -26,7 +43,29 @@ export async function buildApp(opts: {
 
   const app = Fastify({ logger: opts.logger ?? false });
   app.decorate('db', db);
+  const monitors = new MonitorRepository(db);
+  const results = new ResultRepository(db);
+  const schedulerOptions = opts.scheduler === false ? undefined : opts.scheduler;
+  const scheduler = schedulerOptions
+    ? new Scheduler({
+        listEnabled: () => monitors.listEnabled(),
+        runCheck:
+          schedulerOptions.runCheck ??
+          ((monitor) => runHttpCheck(monitor, { allowPrivate: schedulerOptions.allowPrivate })),
+        record: (monitorId, outcome) => {
+          results.record(monitorId, outcome);
+        },
+        maxConcurrency: schedulerOptions.maxConcurrency,
+        random: schedulerOptions.random,
+        log: app.log,
+      })
+    : undefined;
+  if (scheduler) app.decorate('scheduler', scheduler);
+  app.addHook('onReady', async () => {
+    scheduler?.start();
+  });
   app.addHook('onClose', async () => {
+    await scheduler?.stop();
     db.close();
   });
 
@@ -45,7 +84,7 @@ export async function buildApp(opts: {
     return body;
   });
 
-  monitorRoutes(app, new MonitorRepository(db));
+  monitorRoutes(app, monitors, results, scheduler);
 
   app.setErrorHandler((error: FastifyError, request, reply) => {
     if (

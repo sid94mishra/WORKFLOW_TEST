@@ -11,6 +11,8 @@ type Row = {
   expected_status: number;
   keyword: string | null;
   enabled: number;
+  status: Monitor['status'];
+  last_checked_at: string | null;
   created_at: string;
 };
 
@@ -37,6 +39,8 @@ function toMonitor(row: Row): Monitor {
     expectedStatus: row.expected_status,
     keyword: row.keyword,
     enabled: row.enabled === 1,
+    status: row.status,
+    lastCheckedAt: row.last_checked_at,
     createdAt: row.created_at,
   };
 }
@@ -47,6 +51,14 @@ export class MonitorRepository {
   list(): Monitor[] {
     return (
       this.db.prepare('SELECT * FROM monitors ORDER BY created_at ASC, rowid ASC').all() as Row[]
+    ).map(toMonitor);
+  }
+
+  listEnabled(): Monitor[] {
+    return (
+      this.db
+        .prepare('SELECT * FROM monitors WHERE enabled = 1 ORDER BY created_at ASC, rowid ASC')
+        .all() as Row[]
     ).map(toMonitor);
   }
 
@@ -80,6 +92,13 @@ export class MonitorRepository {
       if (value === undefined) continue;
       columns.push(`${COLUMNS[key as keyof MonitorUpdate]} = ?`);
       values.push(key === 'enabled' ? (value ? 1 : 0) : value);
+    }
+    if (
+      ['url', 'method', 'timeoutMs', 'expectedStatus', 'keyword'].some(
+        (key) => patch[key as keyof MonitorUpdate] !== undefined,
+      )
+    ) {
+      columns.push("status = 'pending'", 'consecutive_failures = 0');
     }
     if (columns.length > 0) {
       this.db.prepare(`UPDATE monitors SET ${columns.join(', ')} WHERE id = ?`).run(...values, id);

@@ -1,4 +1,5 @@
-import type { Monitor } from '@pulse/shared';
+import type { Monitor } from '../api/types';
+import { StatusBadge } from './StatusBadge';
 
 export type MonitorListState =
   | { status: 'loading' }
@@ -10,7 +11,7 @@ export interface MonitorListProps {
   onRetry: () => void;
 }
 
-const HEADERS = ['Name', 'URL', 'Method', 'Interval', 'Expected status', 'State'] as const;
+const HEADERS = ['Name', 'URL', 'Method', 'Interval', 'Expected status', 'Status'] as const;
 
 export function MonitorList({ state, onRetry }: MonitorListProps) {
   if (state.status === 'loading') {
@@ -56,21 +57,20 @@ export function MonitorList({ state, onRetry }: MonitorListProps) {
         <tbody className="divide-y divide-slate-200">
           {state.monitors.map((m) => (
             <tr key={m.id}>
-              <td className="px-3 py-2 font-medium text-slate-900">{m.name}</td>
+              <td className="px-3 py-2 font-medium">
+                <a
+                  href={`#/monitors/${encodeURIComponent(m.id)}`}
+                  className="text-blue-800 underline hover:text-blue-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2"
+                >
+                  {m.name}
+                </a>
+              </td>
               <td className="break-all px-3 py-2 text-slate-700">{m.url}</td>
               <td className="px-3 py-2 text-slate-700">{m.method}</td>
               <td className="px-3 py-2 text-slate-700">{m.intervalSeconds}s</td>
               <td className="px-3 py-2 text-slate-700">{m.expectedStatus}</td>
               <td className="px-3 py-2">
-                <span
-                  className={
-                    m.enabled
-                      ? 'rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-900'
-                      : 'rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-800'
-                  }
-                >
-                  {m.enabled ? 'Enabled' : 'Paused'}
-                </span>
+                <StatusBadge status={m.status} enabled={m.enabled} />
               </td>
             </tr>
           ))}
