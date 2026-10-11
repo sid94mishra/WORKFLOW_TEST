@@ -239,6 +239,42 @@ describe('monitor updates and deletion', () => {
     expect(response.json().data.keyword).toBeNull();
   });
 
+  it('increments config_version only when a target field changes', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    const configVersion = (id: string) =>
+      (
+        db().db.prepare('SELECT config_version FROM monitors WHERE id = ?').get(id) as {
+          config_version: number;
+        }
+      ).config_version;
+    const targetPatches = [
+      { url: 'https://other.example' },
+      { method: 'POST' },
+      { timeoutMs: 2000 },
+      { expectedStatus: 201 },
+      { keyword: 'healthy' },
+    ];
+
+    for (const patch of targetPatches) {
+      const monitor = (await create()).json().data;
+      expect(configVersion(monitor.id)).toBe(0);
+      const response = await json('PATCH', `/api/v1/monitors/${monitor.id}`, patch);
+      expect(response.statusCode).toBe(200);
+      expect(response.json().data).not.toHaveProperty('configVersion');
+      expect(configVersion(monitor.id)).toBe(1);
+    }
+
+    const monitor = (await create()).json().data;
+    const response = await json('PATCH', `/api/v1/monitors/${monitor.id}`, {
+      name: 'Renamed',
+      intervalSeconds: 30,
+      enabled: false,
+      public: true,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(configVersion(monitor.id)).toBe(0);
+  });
+
   it('rejects an empty patch', async () => {
     app = await buildApp({ databasePath: ':memory:' });
     const monitor = (await create()).json().data;

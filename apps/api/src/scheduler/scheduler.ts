@@ -1,16 +1,18 @@
 import type { CheckOutcome, Monitor } from '@pulse/shared';
 import type { FastifyBaseLogger } from 'fastify';
 
+export type ScheduledMonitor = Monitor & { configVersion?: number };
+
 export interface SchedulerDeps {
-  listEnabled(): Monitor[];
+  listEnabled(): ScheduledMonitor[];
   runCheck(monitor: Monitor): Promise<CheckOutcome>;
-  record(monitorId: string, outcome: CheckOutcome): void | Promise<void>;
+  record(monitorId: string, outcome: CheckOutcome, configVersion?: number): void | Promise<void>;
   maxConcurrency: number;
   random?: () => number;
   log?: Pick<FastifyBaseLogger, 'debug' | 'info' | 'warn' | 'error'>;
 }
 
-type Task = { monitor: Monitor };
+type Task = { monitor: ScheduledMonitor };
 
 export class Scheduler {
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -37,7 +39,7 @@ export class Scheduler {
     for (const monitor of this.deps.listEnabled()) this.arm(monitor, this.firstDelay(monitor));
   }
 
-  upsert(monitor: Monitor): void {
+  upsert(monitor: ScheduledMonitor): void {
     if (this.stopped) return;
     this.clearTimer(monitor.id);
     // A queued run holds the old snapshot (e.g. the previous URL); drop it so it is never checked.
@@ -75,14 +77,14 @@ export class Scheduler {
     if (timer) clearTimeout(timer);
     this.timers.delete(id);
   }
-  private arm(monitor: Monitor, delay: number): void {
+  private arm(monitor: ScheduledMonitor, delay: number): void {
     this.clearTimer(monitor.id);
     this.timers.set(
       monitor.id,
       setTimeout(() => this.onTimer(monitor), delay),
     );
   }
-  private onTimer(monitor: Monitor): void {
+  private onTimer(monitor: ScheduledMonitor): void {
     this.timers.delete(monitor.id);
     if (this.stopped) return;
     this.arm(monitor, this.nextDelay(monitor));
@@ -118,7 +120,7 @@ export class Scheduler {
     try {
       const outcome = await this.deps.runCheck(monitor);
       try {
-        await this.deps.record(monitor.id, outcome);
+        await this.deps.record(monitor.id, outcome, monitor.configVersion);
       } catch (error) {
         this.deps.log?.error(error, 'Failed to record monitor check');
       }

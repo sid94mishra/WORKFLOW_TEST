@@ -65,12 +65,14 @@ describe('migrate', () => {
       expect.arrayContaining([
         expect.objectContaining({ name: 'status' }),
         expect.objectContaining({ name: 'last_checked_at' }),
+        expect.objectContaining({ name: 'config_version' }),
       ]),
     );
     expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([
       { version: 1 },
       { version: 2 },
       { version: 3 },
+      { version: 4 },
     ]);
   });
 
@@ -120,6 +122,53 @@ describe('migrate', () => {
     ).toEqual([
       { monitor_id: monitorId, day: '2026-10-10', total_checks: 1, ok_checks: 1 },
       { monitor_id: monitorId, day: '2026-10-11', total_checks: 1, ok_checks: 0 },
+    ]);
+  });
+
+  it('applies migration 004 to a v3 database with config_version defaulting to zero', () => {
+    db.exec(
+      'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL);',
+    );
+    for (const version of [1, 2, 3]) {
+      const name = `${String(version).padStart(3, '0')}_${
+        version === 1 ? 'init' : version === 2 ? 'scheduler' : 'incidents_notifications'
+      }.sql`;
+      db.exec(readFileSync(new URL(`../migrations/${name}`, import.meta.url), 'utf8'));
+      db.prepare('INSERT INTO schema_migrations VALUES (?, ?, ?)').run(
+        version,
+        name,
+        '2026-01-01T00:00:00.000Z',
+      );
+    }
+    db.prepare(
+      `INSERT INTO monitors (id,name,url,method,interval_seconds,timeout_ms,expected_status,keyword,enabled,public,status,consecutive_failures,last_checked_at,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ).run(
+      '00000000-0000-4000-8000-000000000001',
+      'Example',
+      'https://example.test',
+      'GET',
+      60,
+      1000,
+      200,
+      null,
+      1,
+      0,
+      'pending',
+      0,
+      null,
+      '2026-01-01T00:00:00.000Z',
+    );
+
+    migrate(db);
+    expect(db.prepare('SELECT config_version FROM monitors').all()).toEqual([
+      { config_version: 0 },
+    ]);
+    expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([
+      { version: 1 },
+      { version: 2 },
+      { version: 3 },
+      { version: 4 },
     ]);
   });
 
