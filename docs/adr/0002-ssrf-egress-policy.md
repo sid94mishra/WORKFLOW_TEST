@@ -33,9 +33,11 @@ Forces:
    reach an address that was validated, and DNS is not queried a second time.
 2. **Manual redirects.** Requests use `redirect: 'manual'`. The checker follows at most 3
    redirects itself and applies step 1 to each target. Only `http:`/`https:` targets are allowed.
-3. **Deny-list of non-public ranges.** Loopback, RFC 1918, link-local, unique-local, unspecified,
-   CGNAT, multicast, reserved, plus the explicit metadata addresses. It is implemented with
-   `node:net` `BlockList`. IPv4-mapped IPv6 is unwrapped first. Invalid input fails closed.
+3. **Deny-list of non-public ranges.** Loopback, RFC 1918, link-local, site-local, unique-local,
+   unspecified, CGNAT, multicast, benchmarking and other reserved ranges, plus the explicit
+   metadata addresses. It is implemented with `node:net` `BlockList`. IPv4-mapped, NAT64
+   (`64:ff9b::/96`), 6to4 (`2002::/16`), and IPv4-compatible IPv6 addresses are unwrapped before
+   applying the IPv4 policy. Invalid input fails closed.
 4. **One development switch.** `PULSE_ALLOW_PRIVATE=1` (checker option `allowPrivate`) turns off
    the policy for every range **except metadata addresses**, which stay blocked. The server logs a
    warning when it is on.

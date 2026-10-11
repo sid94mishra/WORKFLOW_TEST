@@ -138,8 +138,9 @@ export function createPinnedLookup(validated: ReadonlyMap<string, ResolvedAddres
 #### 3.2.2 Address policy
 
 `classifyAddress` uses `node:net` `BlockList` (no dependency). IPv4-mapped IPv6 addresses
-(`::ffff:a.b.c.d`, also in hex form `::ffff:7f00:1`) MUST be unwrapped and classified as IPv4.
-Invalid input → `'reserved'` (fail closed).
+(`::ffff:a.b.c.d`, also in hex form `::ffff:7f00:1`), NAT64 (`64:ff9b::/96`), 6to4
+(`2002::/16`), and IPv4-compatible IPv6 (`::/96`, except `::` and `::1`) MUST be unwrapped and
+classified as IPv4. Invalid input → `'reserved'` (fail closed).
 
 | Range | Reason | Blocked by default | Blocked with `allowPrivate` |
 | --- | --- | --- | --- |
@@ -147,6 +148,7 @@ Invalid input → `'reserved'` (fail closed).
 | `127.0.0.0/8`, `::1/128` | `loopback` | yes | no |
 | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` | `private` | yes | no |
 | `169.254.0.0/16`, `fe80::/10` | `link-local` | yes | no |
+| `fec0::/10`, `192.0.0.0/24`, `198.18.0.0/15` | `reserved` | yes | no |
 | `fc00::/7` | `unique-local` | yes | no |
 | `0.0.0.0/8`, `::/128` | `unspecified` | yes | no |
 | `100.64.0.0/10` | `carrier-grade-nat` | yes | no |

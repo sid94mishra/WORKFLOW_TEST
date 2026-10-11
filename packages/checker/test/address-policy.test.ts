@@ -27,6 +27,17 @@ describe('address policy', () => {
     ['fd00:ec2::254', 'metadata'],
     ['::ffff:127.0.0.1', 'loopback'],
     ['::ffff:7f00:1', 'loopback'],
+    ['64:ff9b::a00:1', 'private'],
+    ['64:ff9b::127.0.0.1', 'loopback'],
+    ['64:ff9b::a9fe:a9fe', 'metadata'],
+    ['2002:7f00:1::', 'loopback'],
+    ['2002:c0a8:101::1', 'private'],
+    ['::127.0.0.1', 'loopback'],
+    ['::a00:1', 'private'],
+    ['fec0::1', 'reserved'],
+    ['192.0.0.8', 'reserved'],
+    ['198.18.0.1', 'reserved'],
+    ['198.19.255.255', 'reserved'],
   ])('classifies %s as %s', (address, reason) => expect(classifyAddress(address)).toBe(reason));
 
   it('allows documentation/public addresses and only relaxes non-metadata rules', () => {
@@ -35,6 +46,13 @@ describe('address policy', () => {
     expect(classifyAddress('not-an-ip')).toBe('reserved');
     expect(isAddressAllowed('127.0.0.1', true)).toBe(true);
     expect(isAddressAllowed('169.254.169.254', true)).toBe(false);
+    expect(isAddressAllowed('64:ff9b::a9fe:a9fe', true)).toBe(false);
+  });
+
+  it('allows public addresses embedded in IPv6', () => {
+    for (const address of ['64:ff9b::808:808', '2002:808:808::1', '::8.8.8.8'])
+      expect(classifyAddress(address)).toBeNull();
+    expect(classifyAddress('198.20.0.1')).toBeNull();
   });
 
   it.each([
