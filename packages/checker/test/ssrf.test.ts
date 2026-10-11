@@ -45,6 +45,16 @@ describe('SSRF protections', () => {
     expect(request).not.toHaveBeenCalled();
   });
 
+  it('blocks a private IPv4 address embedded in NAT64 before fetch', async () => {
+    const request = vi.fn();
+    const result = await runHttpCheck(target('http://evil.test/'), {
+      fetch: request as never,
+      resolveHost: async () => [{ address: '64:ff9b::a00:1', family: 6 }],
+    });
+    expect(result.error).toBe('blocked address: evil.test resolves to 64:ff9b::a00:1 (private)');
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it('does not send a request to a local server when a hostname resolves to loopback', async () => {
     let requests = 0;
     const server = createServer((_request, response) => {

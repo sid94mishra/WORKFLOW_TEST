@@ -34,8 +34,11 @@ const RANGES: Range[] = [
   range('private', '10.0.0.0', 'ipv4', 8),
   range('private', '172.16.0.0', 'ipv4', 12),
   range('private', '192.168.0.0', 'ipv4', 16),
+  range('reserved', '192.0.0.0', 'ipv4', 24),
+  range('reserved', '198.18.0.0', 'ipv4', 15),
   range('link-local', '169.254.0.0', 'ipv4', 16),
   range('link-local', 'fe80::', 'ipv6', 10),
+  range('reserved', 'fec0::', 'ipv6', 10),
   range('unique-local', 'fc00::', 'ipv6', 7),
   range('unspecified', '0.0.0.0', 'ipv4', 8),
   range('unspecified', '::', 'ipv6'),
@@ -45,7 +48,7 @@ const RANGES: Range[] = [
   range('reserved', '240.0.0.0', 'ipv4', 4),
 ];
 
-function mappedIpv4(address: string): string | undefined {
+function embeddedIpv4(address: string): string | undefined {
   const normalized = new URL(`http://[${address}]/`).hostname.slice(1, -1);
   const halves = normalized.split('::');
   const left = halves[0] ? halves[0].split(':') : [];
@@ -70,21 +73,31 @@ function mappedIpv4(address: string): string | undefined {
     ...Array(Math.max(0, 8 - left.length - right.length)).fill('0'),
     ...right,
   ];
-  if (
-    groups.length !== 8 ||
-    groups.slice(0, 5).some((group) => Number.parseInt(group, 16) !== 0) ||
-    groups[5]?.toLowerCase() !== 'ffff'
-  )
-    return undefined;
-  const high = Number.parseInt(groups[6]!, 16);
-  const low = Number.parseInt(groups[7]!, 16);
-  return `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
+  if (groups.length !== 8) return undefined;
+  const values = groups.map((group) => Number.parseInt(group, 16));
+  const toIpv4 = (start: number) => {
+    const high = values[start]!;
+    const low = values[start + 1]!;
+    return `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
+  };
+  const zeroes = (start: number, end: number) =>
+    values.slice(start, end).every((value) => value === 0);
+
+  // IPv4-mapped, NAT64 well-known prefix, 6to4, and IPv4-compatible forms.
+  if (zeroes(0, 5) && values[5] === 0xffff) return toIpv4(6);
+  if (values[0] === 0x64 && values[1] === 0xff9b && zeroes(2, 6)) return toIpv4(6);
+  if (values[0] === 0x2002) return toIpv4(1);
+  if (zeroes(0, 6)) {
+    if (values[6] === 0 && values[7]! <= 1) return undefined;
+    return toIpv4(6);
+  }
+  return undefined;
 }
 
 function normalize(ip: string): string {
   const value = ip.startsWith('[') && ip.endsWith(']') ? ip.slice(1, -1) : ip;
   if (isIP(value) !== 6) return value;
-  return mappedIpv4(value) ?? value;
+  return embeddedIpv4(value) ?? value;
 }
 
 /** Returns null for public input. Invalid input is deliberately treated as reserved. */
