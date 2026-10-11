@@ -11,6 +11,7 @@ type Row = {
   expected_status: number;
   keyword: string | null;
   enabled: number;
+  public: number;
   status: Monitor['status'];
   last_checked_at: string | null;
   created_at: string;
@@ -26,6 +27,7 @@ const COLUMNS: Record<keyof MonitorUpdate, string> = {
   expectedStatus: 'expected_status',
   keyword: 'keyword',
   enabled: 'enabled',
+  public: 'public',
 };
 
 function toMonitor(row: Row): Monitor {
@@ -39,6 +41,7 @@ function toMonitor(row: Row): Monitor {
     expectedStatus: row.expected_status,
     keyword: row.keyword,
     enabled: row.enabled === 1,
+    public: row.public === 1,
     status: row.status,
     lastCheckedAt: row.last_checked_at,
     createdAt: row.created_at,
@@ -73,14 +76,14 @@ export class MonitorRepository {
         `
           INSERT INTO monitors (
             id, name, url, method, interval_seconds, timeout_ms,
-            expected_status, keyword, enabled, created_at
+            expected_status, keyword, enabled, public, created_at
           ) VALUES (
             @id, @name, @url, @method, @intervalSeconds, @timeoutMs,
-            @expectedStatus, @keyword, @enabled, @createdAt
+            @expectedStatus, @keyword, @enabled, @public, @createdAt
           )
         `,
       )
-      .run({ ...input, enabled: input.enabled ? 1 : 0 });
+      .run({ ...input, enabled: input.enabled ? 1 : 0, public: input.public ? 1 : 0 });
     return this.get(input.id)!;
   }
 
@@ -91,7 +94,7 @@ export class MonitorRepository {
     for (const [key, value] of Object.entries(patch)) {
       if (value === undefined) continue;
       columns.push(`${COLUMNS[key as keyof MonitorUpdate]} = ?`);
-      values.push(key === 'enabled' ? (value ? 1 : 0) : value);
+      values.push(key === 'enabled' || key === 'public' ? (value ? 1 : 0) : value);
     }
     if (
       ['url', 'method', 'timeoutMs', 'expectedStatus', 'keyword'].some(

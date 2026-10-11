@@ -58,4 +58,26 @@ describe('App', () => {
     expect(await screen.findByRole('table', { name: 'Monitors' })).toBeInTheDocument();
     window.location.hash = '';
   });
+
+  it('renders the main nav with aria-current following the hash', async () => {
+    window.location.hash = '';
+    render(<App client={fakeClient()} />);
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const link = (name: string) => within(nav).getByRole('link', { name });
+    expect(link('Monitors')).toHaveAttribute('aria-current', 'page');
+    expect(link('Incidents')).not.toHaveAttribute('aria-current');
+    expect(link('Status page')).toHaveAttribute('href', '/status');
+    expect(link('Status page')).toHaveAttribute('target', '_blank');
+    expect(link('Status page')).toHaveAttribute('rel', 'noopener');
+
+    await userEvent.click(link('Incidents'));
+    expect(await screen.findByRole('heading', { name: 'Incidents' })).toBeInTheDocument();
+    expect(link('Incidents')).toHaveAttribute('aria-current', 'page');
+    expect(link('Monitors')).not.toHaveAttribute('aria-current');
+
+    await userEvent.click(link('Channels'));
+    expect(await screen.findByRole('heading', { name: 'Channels' })).toBeInTheDocument();
+    expect(link('Channels')).toHaveAttribute('aria-current', 'page');
+    window.location.hash = '';
+  });
 });

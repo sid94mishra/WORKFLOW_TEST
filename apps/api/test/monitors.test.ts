@@ -44,6 +44,7 @@ describe('monitor collection', () => {
       expectedStatus: 200,
       keyword: null,
       enabled: true,
+      public: false,
     });
     expect(monitor.id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
@@ -215,6 +216,18 @@ describe('monitor updates and deletion', () => {
     expect(response.statusCode).toBe(200);
     expect(updated).toMatchObject({ ...original, name: 'New', enabled: false });
     expect((await app.inject(`/api/v1/monitors/${original.id}`)).json().data).toEqual(updated);
+  });
+
+  it('updates the public flag without resetting the monitor status', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    const monitor = (await create()).json().data;
+    const database = db().db;
+    database
+      .prepare("UPDATE monitors SET status='down', consecutive_failures=3 WHERE id=?")
+      .run(monitor.id);
+    const response = await json('PATCH', `/api/v1/monitors/${monitor.id}`, { public: true });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({ public: true, status: 'down' });
   });
 
   it('clears keyword when patched to null', async () => {

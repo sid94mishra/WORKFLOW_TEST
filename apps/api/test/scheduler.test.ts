@@ -12,6 +12,7 @@ const monitor = (id = '00000000-0000-4000-8000-000000000000'): Monitor => ({
   expectedStatus: 200,
   keyword: null,
   enabled: true,
+  public: false,
   status: 'pending',
   lastCheckedAt: null,
   createdAt: '2026-10-11T00:00:00.000Z',

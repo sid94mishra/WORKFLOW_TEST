@@ -1,0 +1,12 @@
+ALTER TABLE monitors ADD COLUMN public INTEGER NOT NULL DEFAULT 0 CHECK (public IN (0, 1));
+CREATE TABLE incidents (id TEXT PRIMARY KEY, monitor_id TEXT NOT NULL REFERENCES monitors(id) ON DELETE CASCADE, status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved')), cause TEXT NULL, started_at TEXT NOT NULL, resolved_at TEXT NULL, duration_seconds INTEGER NULL CHECK (duration_seconds IS NULL OR duration_seconds >= 0), CHECK ((status = 'open' AND resolved_at IS NULL AND duration_seconds IS NULL) OR (status = 'resolved' AND resolved_at IS NOT NULL AND duration_seconds IS NOT NULL)));
+CREATE UNIQUE INDEX idx_incidents_one_open ON incidents (monitor_id) WHERE status = 'open';
+CREATE INDEX idx_incidents_monitor_started ON incidents (monitor_id, started_at DESC);
+CREATE INDEX idx_incidents_status_started ON incidents (status, started_at DESC);
+CREATE TABLE notification_channels (id TEXT PRIMARY KEY, name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 100), kind TEXT NOT NULL CHECK (kind IN ('webhook','slack')), url TEXT NOT NULL CHECK (length(url) <= 2048), enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)), created_at TEXT NOT NULL);
+CREATE TABLE monitor_channels (monitor_id TEXT NOT NULL REFERENCES monitors(id) ON DELETE CASCADE, channel_id TEXT NOT NULL REFERENCES notification_channels(id) ON DELETE CASCADE, PRIMARY KEY (monitor_id, channel_id));
+CREATE INDEX idx_monitor_channels_channel ON monitor_channels (channel_id);
+CREATE TABLE delivery_attempts (id TEXT PRIMARY KEY, channel_id TEXT NOT NULL REFERENCES notification_channels(id) ON DELETE CASCADE, incident_id TEXT NULL REFERENCES incidents(id) ON DELETE SET NULL, event TEXT NOT NULL CHECK (event IN ('incident.opened','incident.resolved','test')), attempt INTEGER NOT NULL CHECK (attempt BETWEEN 1 AND 3), attempted_at TEXT NOT NULL, ok INTEGER NOT NULL CHECK (ok IN (0,1)), status_code INTEGER NULL, latency_ms INTEGER NOT NULL CHECK (latency_ms >= 0), error TEXT NULL);
+CREATE INDEX idx_delivery_attempts_channel ON delivery_attempts (channel_id, attempted_at DESC);
+CREATE TABLE daily_uptime (monitor_id TEXT NOT NULL REFERENCES monitors(id) ON DELETE CASCADE, day TEXT NOT NULL, total_checks INTEGER NOT NULL CHECK (total_checks >= 0), ok_checks INTEGER NOT NULL CHECK (ok_checks >= 0 AND ok_checks <= total_checks), PRIMARY KEY (monitor_id, day));
+INSERT INTO daily_uptime (monitor_id, day, total_checks, ok_checks) SELECT monitor_id, substr(checked_at,1,10), count(*), sum(ok) FROM check_results GROUP BY monitor_id, substr(checked_at,1,10);

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiClientError, type ApiClient } from '../api/client';
 import { UPTIME_WINDOWS, type CheckResult, type Monitor, type UptimeWindow } from '../api/types';
+import { BadgeSnippet } from './BadgeSnippet';
+import { PublicToggle } from './PublicToggle';
 import { LatencySparkline } from './LatencySparkline';
 import { StatusBadge } from './StatusBadge';
 import { UptimeSummary, type UptimeItem } from './UptimeSummary';
@@ -127,6 +129,22 @@ export function MonitorDetail({ id, client = api }: { id: string; client?: ApiCl
           </span>
         </div>
       </header>
+
+      <section aria-labelledby="public-heading" className="space-y-3">
+        <h3 id="public-heading" className="text-lg font-semibold">
+          Public status page
+        </h3>
+        <PublicToggle
+          monitor={m}
+          client={client}
+          onChange={(value) => setMonitor({ status: 'ready', value })}
+        />
+        {m.public ? (
+          <BadgeSnippet monitorId={m.id} />
+        ) : (
+          <p className="text-sm text-slate-700">Make this monitor public to get a status badge.</p>
+        )}
+      </section>
 
       <section aria-labelledby="latency-heading" className="space-y-2">
         <h3 id="latency-heading" className="text-lg font-semibold">

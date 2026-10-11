@@ -5,7 +5,8 @@ const config = readConfig();
 const app = await buildApp({
   databasePath: config.databasePath,
   logger: { level: config.logLevel },
-  scheduler: { maxConcurrency: config.maxConcurrency, allowPrivate: config.allowPrivate },
+  allowPrivate: config.allowPrivate,
+  scheduler: { maxConcurrency: config.maxConcurrency },
 });
 
 if (config.allowPrivate) {

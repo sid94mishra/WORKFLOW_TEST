@@ -4,9 +4,20 @@ import type {
   ErrorCode,
   HealthResponse,
   MonitorCreateInput,
-  MonitorUpdate,
 } from '@pulse/shared';
-import type { CheckResult, Monitor, UptimeSummary, UptimeWindow } from './types';
+import type {
+  Channel,
+  ChannelCreateInput,
+  ChannelUpdate,
+  CheckResult,
+  DeliveryAttempt,
+  Incident,
+  IncidentsQuery,
+  Monitor,
+  MonitorUpdate,
+  UptimeSummary,
+  UptimeWindow,
+} from './types';
 
 export class ApiClientError extends Error {
   constructor(
@@ -29,6 +40,12 @@ export interface ApiClient {
   createMonitor(input: MonitorCreateInput): Promise<Monitor>;
   updateMonitor(id: string, patch: MonitorUpdate): Promise<Monitor>;
   deleteMonitor(id: string): Promise<void>;
+  listIncidents(q?: Partial<IncidentsQuery>, signal?: AbortSignal): Promise<Incident[]>;
+  listChannels(signal?: AbortSignal): Promise<Channel[]>;
+  createChannel(input: ChannelCreateInput): Promise<Channel>;
+  updateChannel(id: string, patch: ChannelUpdate): Promise<Channel>;
+  deleteChannel(id: string): Promise<void>;
+  testChannel(id: string): Promise<DeliveryAttempt>;
 }
 
 function isApiError(body: unknown): body is ApiError {
@@ -127,6 +144,38 @@ export function createApiClient(opts: { baseUrl?: string; fetch?: typeof fetch }
     },
     async deleteMonitor(id) {
       await request(`/api/v1/monitors/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
+    async listIncidents(q = {}, signal) {
+      const params = new URLSearchParams();
+      if (q.status !== undefined) params.set('status', q.status);
+      if (q.monitorId !== undefined) params.set('monitorId', q.monitorId);
+      if (q.limit !== undefined) params.set('limit', String(q.limit));
+      const qs = params.toString();
+      return unwrap<Incident[]>(
+        await request(`/api/v1/incidents${qs ? `?${qs}` : ''}`, { signal }),
+      );
+    },
+    async listChannels(signal) {
+      return unwrap<Channel[]>(await request('/api/v1/channels', { signal }));
+    },
+    async createChannel(input) {
+      return unwrap<Channel>(await request('/api/v1/channels', { method: 'POST', body: input }));
+    },
+    async updateChannel(id, patch) {
+      return unwrap<Channel>(
+        await request(`/api/v1/channels/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: patch,
+        }),
+      );
+    },
+    async deleteChannel(id) {
+      await request(`/api/v1/channels/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
+    async testChannel(id) {
+      return unwrap<DeliveryAttempt>(
+        await request(`/api/v1/channels/${encodeURIComponent(id)}/test`, { method: 'POST' }),
+      );
     },
   };
 }

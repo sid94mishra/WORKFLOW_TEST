@@ -1,10 +1,21 @@
-// Iteration-2 contract types (spec §3.1), re-exported so components import from one place.
+// Contract types (spec §3.1) owned by @pulse/shared, re-exported so components import from one place.
 export { UPTIME_WINDOWS } from '@pulse/shared';
 export type {
   CheckResult,
   CheckStatus,
-  Monitor,
   MonitorStatus,
   UptimeSummary,
   UptimeWindow,
 } from '@pulse/shared';
+
+export type { Monitor, MonitorUpdate } from '@pulse/shared';
+export type {
+  Channel,
+  ChannelCreateInput,
+  ChannelKind,
+  ChannelUpdate,
+  DeliveryAttempt,
+  Incident,
+  IncidentStatus,
+  IncidentsQuery,
+} from './contract';

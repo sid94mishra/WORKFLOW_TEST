@@ -39,6 +39,9 @@ importers:
       '@types/node':
         specifier: ^22.18.12
         version: 22.20.5
+      jsdom:
+        specifier: ^30.1.2
+        version: 30.1.2
       tsx:
         specifier: ^4.20.6
         version: 4.23.15
