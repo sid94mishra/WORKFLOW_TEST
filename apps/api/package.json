@@ -15,6 +15,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@pulse/checker": "workspace:*",
     "@pulse/shared": "workspace:*",
     "better-sqlite3": "^12.6.0",
     "fastify": "^5.6.2",

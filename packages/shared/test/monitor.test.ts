@@ -92,6 +92,8 @@ describe('MonitorSchema', () => {
     const monitor = {
       id: '11111111-1111-4111-8111-111111111111',
       ...MonitorCreateSchema.parse(valid),
+      status: 'pending',
+      lastCheckedAt: null,
       createdAt: '2026-10-11T09:30:00.000Z',
     };
     expect(MonitorSchema.safeParse(monitor).success).toBe(true);
@@ -124,6 +126,7 @@ describe('CheckResultSchema', () => {
         latencyMs: 3,
         error: null,
         keywordMatched: null,
+        status: 'up',
       }).id,
     ).toBe(id);
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Monitor } from '@pulse/shared';
+import type { Monitor } from './types';
 import { ApiClientError, createApiClient } from './client';
 
 const monitor: Monitor = {
@@ -13,6 +13,8 @@ const monitor: Monitor = {
   keyword: null,
   enabled: true,
   createdAt: '2026-10-11T09:30:00.000Z',
+  status: 'pending',
+  lastCheckedAt: null,
 };
 
 const json = (body: unknown, status = 200) =>
@@ -89,5 +91,30 @@ describe('api client', () => {
     const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(abort);
     const client = createApiClient({ fetch: fetchMock });
     await expect(client.listMonitors()).rejects.toBe(abort);
+  });
+
+  it('passes signal to getMonitor and builds results/uptime queries', async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock.mockResolvedValueOnce(json({ data: monitor }));
+    fetchMock.mockResolvedValueOnce(json({ data: [] }));
+    fetchMock.mockResolvedValueOnce(json({ data: [] }));
+    fetchMock.mockResolvedValueOnce(json({ data: { totalChecks: 0 } }));
+    const client = createApiClient({ baseUrl: 'http://x', fetch: fetchMock });
+    const controller = new AbortController();
+
+    await client.getMonitor(monitor.id, controller.signal);
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+
+    expect(await client.listResults(monitor.id, { limit: 50 })).toEqual([]);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      `http://x/api/v1/monitors/${monitor.id}/results?limit=50`,
+    );
+    await client.listResults(monitor.id);
+    expect(fetchMock.mock.calls[2]?.[0]).toBe(`http://x/api/v1/monitors/${monitor.id}/results`);
+
+    expect(await client.getUptime(monitor.id, '7d', controller.signal)).toEqual({ totalChecks: 0 });
+    expect(fetchMock.mock.calls[3]?.[0]).toBe(
+      `http://x/api/v1/monitors/${monitor.id}/uptime?window=7d`,
+    );
   });
 });

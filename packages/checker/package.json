@@ -19,7 +19,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@pulse/shared": "workspace:*"
+    "@pulse/shared": "workspace:*",
+    "undici": "^7.16.0"
   },
   "devDependencies": {
     "@types/node": "^22.18.12",

@@ -40,17 +40,20 @@ describe('MonitorList', () => {
     const headers = within(table)
       .getAllByRole('columnheader')
       .map((h) => h.textContent);
-    expect(headers).toEqual(['Name', 'URL', 'Method', 'Interval', 'Expected status', 'State']);
+    expect(headers).toEqual(['Name', 'URL', 'Method', 'Interval', 'Expected status', 'Status']);
 
     const rows = within(table).getAllByRole('row').slice(1);
     expect(rows).toHaveLength(2);
     expect(within(rows[0]!).getByText('Alpha')).toBeInTheDocument();
     expect(within(rows[0]!).getByText('30s')).toBeInTheDocument();
-    expect(within(rows[0]!).getByText('Enabled')).toBeInTheDocument();
+    expect(within(rows[0]!).getByText('Pending')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Beta')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('https://beta.test')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('HEAD')).toBeInTheDocument();
     expect(within(rows[1]!).getByText('Paused')).toBeInTheDocument();
-    expect(within(table).queryByRole('link')).toBeNull();
+    expect(within(rows[0]!).getByRole('link', { name: 'Alpha' })).toHaveAttribute(
+      'href',
+      `#/monitors/${monitors[0]!.id}`,
+    );
   });
 });

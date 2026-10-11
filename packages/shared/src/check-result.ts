@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CheckStatusSchema } from './status.js';
 
 export const CheckOutcomeSchema = z
   .object({
@@ -22,6 +23,7 @@ export const CheckOutcomeSchema = z
 export const CheckResultSchema = CheckOutcomeSchema.extend({
   id: z.uuid(),
   monitorId: z.uuid(),
+  status: CheckStatusSchema,
 }).strict();
 export type CheckOutcome = z.infer<typeof CheckOutcomeSchema>;
 export type CheckResult = z.infer<typeof CheckResultSchema>;

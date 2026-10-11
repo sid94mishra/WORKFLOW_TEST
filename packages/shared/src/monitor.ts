@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MonitorStatusSchema } from './status.js';
 
 export const HTTP_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const;
 export const MONITOR_DEFAULTS = {
@@ -56,7 +57,13 @@ const headKeywordRule = <T extends { method?: HttpMethod; keyword?: string | nul
 };
 
 export const MonitorSchema = z
-  .object({ id: z.uuid(), ...fields, createdAt: z.iso.datetime() })
+  .object({
+    id: z.uuid(),
+    ...fields,
+    status: MonitorStatusSchema,
+    lastCheckedAt: z.iso.datetime().nullable(),
+    createdAt: z.iso.datetime(),
+  })
   .strict()
   .superRefine(headKeywordRule);
 export const MonitorCreateSchema = z

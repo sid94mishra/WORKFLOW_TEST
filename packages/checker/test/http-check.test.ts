@@ -59,21 +59,23 @@ const target = (path: string, extra: Partial<HttpCheckTarget> = {}): HttpCheckTa
   keyword: null,
   ...extra,
 });
+const check = (input: HttpCheckTarget, opts: Parameters<typeof runHttpCheck>[1] = {}) =>
+  runHttpCheck(input, { allowPrivate: true, ...opts });
 
 describe('runHttpCheck', () => {
   it('reports ok for the expected status', async () => {
-    const result = await runHttpCheck(target('/ok'));
+    const result = await check(target('/ok'));
     expect(result).toMatchObject({ ok: true, statusCode: 200, error: null, keywordMatched: null });
     expect(new Date(result.checkedAt).toISOString()).toBe(result.checkedAt);
   });
 
   it('reports ok with keywordMatched when the keyword is present', async () => {
-    const result = await runHttpCheck(target('/ok', { keyword: 'known' }));
+    const result = await check(target('/ok', { keyword: 'known' }));
     expect(result).toMatchObject({ ok: true, error: null, keywordMatched: true });
   });
 
   it('reports a status mismatch', async () => {
-    const result = await runHttpCheck(target('/status'));
+    const result = await check(target('/status'));
     expect(result).toMatchObject({
       ok: false,
       statusCode: 500,
@@ -82,12 +84,12 @@ describe('runHttpCheck', () => {
   });
 
   it('still evaluates the keyword on a status mismatch', async () => {
-    const result = await runHttpCheck(target('/status', { keyword: 'failure' }));
+    const result = await check(target('/status', { keyword: 'failure' }));
     expect(result).toMatchObject({ ok: false, keywordMatched: true });
   });
 
   it('reports a missing keyword', async () => {
-    const result = await runHttpCheck(target('/ok', { keyword: 'absent' }));
+    const result = await check(target('/ok', { keyword: 'absent' }));
     expect(result).toMatchObject({
       ok: false,
       statusCode: 200,
@@ -97,21 +99,19 @@ describe('runHttpCheck', () => {
   });
 
   it('follows redirects and reports the final status', async () => {
-    const result = await runHttpCheck(target('/redirect'));
+    const result = await check(target('/redirect'));
     expect(result).toMatchObject({ ok: true, statusCode: 200 });
   });
 
   it('times out waiting for headers within timeoutMs + 500 ms', async () => {
     const start = performance.now();
-    const result = await runHttpCheck(target('/slow', { timeoutMs: TIMEOUT_MS }));
+    const result = await check(target('/slow', { timeoutMs: TIMEOUT_MS }));
     expect(performance.now() - start).toBeLessThan(TIMEOUT_MS + 500);
     expect(result).toMatchObject({ ok: false, statusCode: null, error: 'timeout' });
   });
 
   it('times out while reading the body and keeps the status', async () => {
-    const result = await runHttpCheck(
-      target('/slow-body', { timeoutMs: TIMEOUT_MS, keyword: 'later' }),
-    );
+    const result = await check(target('/slow-body', { timeoutMs: TIMEOUT_MS, keyword: 'later' }));
     expect(result).toMatchObject({
       ok: false,
       statusCode: 200,
@@ -121,7 +121,7 @@ describe('runHttpCheck', () => {
   });
 
   it('reports a body read failure with the status', async () => {
-    const result = await runHttpCheck(target('/broken-body', { keyword: 'partial' }));
+    const result = await check(target('/broken-body', { keyword: 'partial' }));
     expect(result.ok).toBe(false);
     expect(result.statusCode).toBe(200);
     expect(result.keywordMatched).toBeNull();
@@ -136,23 +136,23 @@ describe('runHttpCheck', () => {
     const port = typeof address === 'object' && address ? address.port : 0;
     await new Promise<void>((resolve) => closed.close(() => resolve()));
 
-    const result = await runHttpCheck(target('/', { url: `http://127.0.0.1:${port}/` }));
+    const result = await check(target('/', { url: `http://127.0.0.1:${port}/` }));
     expect(result).toMatchObject({ ok: false, statusCode: null, keywordMatched: null });
     expect(result.error).toMatch(/ECONNREFUSED/);
   });
 
   it('reports an invalid URL without rejecting', async () => {
-    const result = await runHttpCheck(target('/', { url: 'not a url' }));
+    const result = await check(target('/', { url: 'not a url' }));
     expect(result).toMatchObject({ ok: false, statusCode: null });
     expect(result.error).toBeTruthy();
   });
 
   it('reports non-negative integer latency in every outcome', async () => {
     const results = await Promise.all([
-      runHttpCheck(target('/ok')),
-      runHttpCheck(target('/status')),
-      runHttpCheck(target('/slow', { timeoutMs: TIMEOUT_MS })),
-      runHttpCheck(target('/', { url: 'not a url' })),
+      check(target('/ok')),
+      check(target('/status')),
+      check(target('/slow', { timeoutMs: TIMEOUT_MS })),
+      check(target('/', { url: 'not a url' })),
     ]);
     for (const { latencyMs } of results) {
       expect(Number.isInteger(latencyMs)).toBe(true);
@@ -161,14 +161,16 @@ describe('runHttpCheck', () => {
   });
 
   it('sends the method and the default user agent', async () => {
-    await runHttpCheck(target('/ok', { method: 'HEAD' }));
+    await check(target('/ok', { method: 'HEAD' }));
     expect(seenMethod).toBe('HEAD');
     expect(seenUserAgent).toBe('Pulse/0.1 (+uptime-check)');
   });
 
   it('uses an injected fetch', async () => {
-    const fetch = async () => new Response(null, { status: 204 });
-    const result = await runHttpCheck(target('/ok', { expectedStatus: 204 }), { fetch });
+    const fetch = (async () => new Response(null, { status: 204 })) as unknown as NonNullable<
+      Parameters<typeof runHttpCheck>[1]
+    >['fetch'];
+    const result = await check(target('/ok', { expectedStatus: 204 }), { fetch });
     expect(result).toMatchObject({ ok: true, statusCode: 204 });
   });
 });

@@ -5,7 +5,12 @@ const config = readConfig();
 const app = await buildApp({
   databasePath: config.databasePath,
   logger: { level: config.logLevel },
+  scheduler: { maxConcurrency: config.maxConcurrency, allowPrivate: config.allowPrivate },
 });
+
+if (config.allowPrivate) {
+  app.log.warn('PULSE_ALLOW_PRIVATE=1: private addresses are allowed; do not use in production');
+}
 
 async function shutdown(): Promise<void> {
   await app.close();

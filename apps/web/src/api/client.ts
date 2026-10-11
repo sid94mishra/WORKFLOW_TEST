@@ -3,10 +3,10 @@ import type {
   ApiIssue,
   ErrorCode,
   HealthResponse,
-  Monitor,
   MonitorCreateInput,
   MonitorUpdate,
 } from '@pulse/shared';
+import type { CheckResult, Monitor, UptimeSummary, UptimeWindow } from './types';
 
 export class ApiClientError extends Error {
   constructor(
@@ -23,7 +23,9 @@ export class ApiClientError extends Error {
 export interface ApiClient {
   health(): Promise<HealthResponse>;
   listMonitors(signal?: AbortSignal): Promise<Monitor[]>;
-  getMonitor(id: string): Promise<Monitor>;
+  getMonitor(id: string, signal?: AbortSignal): Promise<Monitor>;
+  listResults(id: string, opts?: { limit?: number }, signal?: AbortSignal): Promise<CheckResult[]>;
+  getUptime(id: string, window: UptimeWindow, signal?: AbortSignal): Promise<UptimeSummary>;
   createMonitor(input: MonitorCreateInput): Promise<Monitor>;
   updateMonitor(id: string, patch: MonitorUpdate): Promise<Monitor>;
   deleteMonitor(id: string): Promise<void>;
@@ -93,8 +95,24 @@ export function createApiClient(opts: { baseUrl?: string; fetch?: typeof fetch }
     async listMonitors(signal) {
       return unwrap<Monitor[]>(await request('/api/v1/monitors', { signal }));
     },
-    async getMonitor(id) {
-      return unwrap<Monitor>(await request(`/api/v1/monitors/${encodeURIComponent(id)}`));
+    async getMonitor(id, signal) {
+      return unwrap<Monitor>(
+        await request(`/api/v1/monitors/${encodeURIComponent(id)}`, { signal }),
+      );
+    },
+    async listResults(id, opts = {}, signal) {
+      const query = opts.limit === undefined ? '' : `?limit=${encodeURIComponent(opts.limit)}`;
+      return unwrap<CheckResult[]>(
+        await request(`/api/v1/monitors/${encodeURIComponent(id)}/results${query}`, { signal }),
+      );
+    },
+    async getUptime(id, window, signal) {
+      return unwrap<UptimeSummary>(
+        await request(
+          `/api/v1/monitors/${encodeURIComponent(id)}/uptime?window=${encodeURIComponent(window)}`,
+          { signal },
+        ),
+      );
     },
     async createMonitor(input) {
       return unwrap<Monitor>(await request('/api/v1/monitors', { method: 'POST', body: input }));
