@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
+import cookie from '@fastify/cookie';
+import fastifyStatic from '@fastify/static';
 import type { HealthResponse } from '@pulse/shared';
 import { postJson, runHttpCheck, type ResolveHost } from '@pulse/checker';
 import { openDatabase } from './db.js';
@@ -15,6 +17,14 @@ import { Notifier } from './notifications/notifier.js';
 import { incidentRoutes } from './incidents/routes.js';
 import { statusRoutes } from './status/routes.js';
 import { badgeRoutes } from './badges/routes.js';
+import { ensureAdmin, resolveSessionSecret, type AdminBootstrap } from './auth/bootstrap.js';
+import { createPasswordVerifier, type ScryptParams } from './auth/password.js';
+import { SessionStore } from './auth/sessions.js';
+import { LoginRateLimiter } from './auth/rate-limit.js';
+import { authPlugin } from './auth/plugin.js';
+import { authRoutes } from './auth/routes.js';
+import { ApiKeyRepository } from './api-keys/repository.js';
+import { apiKeyRoutes } from './api-keys/routes.js';
 
 // `../package.json` resolves to apps/api/package.json from both src/ and dist/.
 const { version } = JSON.parse(
@@ -32,6 +42,7 @@ export type SchedulerOptions = {
 declare module 'fastify' {
   interface FastifyInstance {
     scheduler?: Scheduler;
+    adminBootstrap: AdminBootstrap;
   }
 }
 
@@ -45,6 +56,19 @@ export async function buildApp(opts: {
     fetch?: NonNullable<Parameters<typeof runHttpCheck>[1]>['fetch'];
   };
   notifier?: { maxConcurrency?: number; retryDelaysMs?: readonly number[] };
+  auth?: {
+    admin?: { email: string; password: string };
+    sessionSecret?: string;
+    cookieSecure?: 'auto' | boolean;
+    scryptParams?: ScryptParams;
+  };
+  trustProxy?: boolean | number | string[];
+  webDir?: string;
+  onRoute?: (routeOptions: {
+    method: string | string[];
+    url: string;
+    config?: Record<string, unknown>;
+  }) => void;
 }): Promise<FastifyInstance> {
   const db = openDatabase(opts.databasePath);
   try {
@@ -54,8 +78,36 @@ export async function buildApp(opts: {
     throw error;
   }
 
-  const app = Fastify({ logger: opts.logger ?? false });
+  const sessionSecret = resolveSessionSecret(db, opts.auth?.sessionSecret);
+  const adminBootstrap = await ensureAdmin(db, opts.auth?.admin, opts.auth?.scryptParams);
+  const suppliedLogger = opts.logger === undefined ? false : opts.logger;
+  const logger =
+    suppliedLogger === false
+      ? false
+      : {
+          ...(typeof suppliedLogger === 'object' ? suppliedLogger : {}),
+          redact: [
+            'req.headers.authorization',
+            'req.headers.cookie',
+            'res.headers.set-cookie',
+            'PULSE_ADMIN_PASSWORD',
+            'password',
+          ],
+        };
+  const app = Fastify({
+    logger,
+    // Fastify's runtime supports numeric hop counts even though its v5 declaration omits number.
+    trustProxy: opts.trustProxy as unknown as boolean | string | string[],
+  });
+  if (opts.onRoute) app.addHook('onRoute', opts.onRoute);
   app.decorate('db', db);
+  app.decorate('adminBootstrap', adminBootstrap);
+  await app.register(cookie, { secret: sessionSecret });
+  const sessions = new SessionStore(db);
+  const keys = new ApiKeyRepository(db);
+  const limiter = new LoginRateLimiter();
+  const verifier = await createPasswordVerifier(opts.auth?.scryptParams);
+  authPlugin(app, sessions, keys);
   const monitors = new MonitorRepository(db);
   const results = new ResultRepository(db);
   const channels = new ChannelRepository(db);
@@ -110,6 +162,7 @@ export async function buildApp(opts: {
   app.addHook('onClose', async () => {
     await scheduler?.stop();
     await notifier.stop();
+    sessions.close();
     db.close();
   });
 
@@ -128,6 +181,8 @@ export async function buildApp(opts: {
     return body;
   });
 
+  authRoutes(app, db, sessions, limiter, verifier.dummyHash, opts.auth?.cookieSecure ?? 'auto');
+  apiKeyRoutes(app, keys);
   monitorRoutes(app, monitors, results, scheduler);
   incidentRoutes(app, db);
   channelRoutes(app, channels, monitors, deliveries, notifier, {
@@ -136,6 +191,36 @@ export async function buildApp(opts: {
   });
   statusRoutes(app, db);
   badgeRoutes(app, monitors, results);
+
+  app.addHook('onSend', async (request, reply, payload) => {
+    reply.header('x-content-type-options', 'nosniff');
+    if (opts.webDir && request.url === '/') {
+      reply.header('cache-control', 'no-cache');
+      reply.header(
+        'content-security-policy',
+        "default-src 'self'; img-src 'self' data:; style-src 'self'; frame-ancestors 'none'",
+      );
+    }
+    if (opts.webDir && request.url.startsWith('/assets/'))
+      reply.header('cache-control', 'public, max-age=31536000, immutable');
+    return payload;
+  });
+  if (opts.webDir) {
+    await app.register(fastifyStatic, {
+      root: opts.webDir,
+      wildcard: false,
+      setHeaders: (res, path) => {
+        if (path.endsWith('/index.html') || path.endsWith('index.html')) {
+          res.setHeader('cache-control', 'no-cache');
+          res.setHeader(
+            'content-security-policy',
+            "default-src 'self'; img-src 'self' data:; style-src 'self'; frame-ancestors 'none'",
+          );
+        } else if (path.includes('/assets/'))
+          res.setHeader('cache-control', 'public, max-age=31536000, immutable');
+      },
+    });
+  }
 
   app.setErrorHandler((error: FastifyError, request, reply) => {
     if (

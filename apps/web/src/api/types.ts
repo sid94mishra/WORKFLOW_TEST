@@ -19,3 +19,12 @@ export type {
   IncidentStatus,
   IncidentsQuery,
 } from './contract';
+export type {
+  ApiKey,
+  ApiKeyCreateInput,
+  ApiKeyCreated,
+  ApiKeyScope,
+  LoginRequest,
+  SessionInfo,
+  User,
+} from './auth-types';

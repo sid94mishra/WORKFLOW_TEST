@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp } from '../src/app.js';
+import { buildTestApp as buildApp } from './helpers.js';
 
 let app: FastifyInstance | undefined;
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { SqliteDatabase } from '../db.js';
 import { buildStatusPage, renderStatusPageHtml } from './page.js';
 export function statusRoutes(app: FastifyInstance, db: SqliteDatabase) {
-  app.get('/api/v1/status', async (_req, reply) =>
+  app.get('/api/v1/status', { config: { public: true } }, async (_req, reply) =>
     reply
       .header('cache-control', 'public, max-age=30')
       .send({ data: buildStatusPage(db, new Date()) }),

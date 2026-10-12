@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { CheckResultSchema } from '@pulse/shared';
-import { buildApp } from '../src/app.js';
+import { buildTestApp as buildApp } from './helpers.js';
 
 let app: FastifyInstance | undefined;
 const create = async () => {

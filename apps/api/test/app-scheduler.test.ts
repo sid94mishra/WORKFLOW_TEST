@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp } from '../src/app.js';
+import { buildTestApp as buildApp } from './helpers.js';
 
 const outcome = {
   checkedAt: '2026-10-11T00:00:00.000Z',
