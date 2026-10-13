@@ -12,13 +12,24 @@ import { apiError, issues } from '../errors.js';
 import type { MonitorRepository, MonitorSnapshot } from './repository.js';
 import type { ResultRepository } from '../results/repository.js';
 import type { Scheduler } from '../scheduler/scheduler.js';
+import type { MaintenanceRepository } from '../maintenance/repository.js';
+import { activeWindowFor } from '@pulse/shared';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type IdParams = { Params: { id: string } };
 
-function publicMonitor({ configVersion: _configVersion, ...monitor }: MonitorSnapshot) {
-  return monitor;
+function publicMonitor(
+  { configVersion: _configVersion, ...monitor }: MonitorSnapshot,
+  maintenance?: MaintenanceRepository,
+) {
+  const now = new Date();
+  return {
+    ...monitor,
+    maintenance: maintenance
+      ? activeWindowFor(monitor.id, maintenance.listRelevant(now.toISOString()), now)
+      : null,
+  };
 }
 
 function isUuid(id: string): boolean {
@@ -52,17 +63,34 @@ export function monitorRoutes(
   repository: MonitorRepository,
   results: ResultRepository,
   scheduler?: Scheduler,
+  maintenance?: MaintenanceRepository,
 ): void {
   const findMonitor = (id: string) => (isUuid(id) ? repository.get(id) : undefined);
 
   app.get('/api/v1/monitors', async () => {
-    return { data: repository.list() };
+    const now = new Date(),
+      windows = maintenance?.listRelevant(now.toISOString()) ?? [];
+    return {
+      data: repository
+        .list()
+        .map((m) => ({ ...m, maintenance: activeWindowFor(m.id, windows, now) })),
+    };
   });
 
   app.get<IdParams>('/api/v1/monitors/:id', async (request, reply) => {
     const monitor = findMonitor(request.params.id);
     if (!monitor) return monitorNotFound(reply);
-    return { data: monitor };
+    const now = new Date();
+    return {
+      data: {
+        ...monitor,
+        maintenance: activeWindowFor(
+          monitor.id,
+          maintenance?.listRelevant(now.toISOString()) ?? [],
+          now,
+        ),
+      },
+    };
   });
 
   app.get<IdParams>('/api/v1/monitors/:id/results', async (request, reply) => {
@@ -96,7 +124,7 @@ export function monitorRoutes(
     return reply
       .code(201)
       .header('location', `/api/v1/monitors/${monitor.id}`)
-      .send({ data: publicMonitor(monitor) });
+      .send({ data: publicMonitor(monitor, maintenance) });
   });
 
   app.patch<IdParams>('/api/v1/monitors/:id', async (request, reply) => {
@@ -114,7 +142,7 @@ export function monitorRoutes(
 
     const monitor = repository.update(existing.id, patch.data);
     scheduler?.upsert(monitor);
-    return { data: publicMonitor(monitor) };
+    return { data: publicMonitor(monitor, maintenance) };
   });
 
   app.delete<IdParams>('/api/v1/monitors/:id', async (request, reply) => {

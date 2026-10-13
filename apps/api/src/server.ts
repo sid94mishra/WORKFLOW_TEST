@@ -12,6 +12,7 @@ export async function start(opts: { exit?: (code: number) => void; env?: NodeJS.
     auth: config.auth,
     trustProxy: config.trustProxy,
     webDir: config.webDir,
+    metricsPublic: config.metricsPublic,
   });
   const exit = opts.exit ?? ((code: number) => process.exit(code));
   if (app.adminBootstrap === 'missing') {
@@ -28,6 +29,7 @@ export async function start(opts: { exit?: (code: number) => void; env?: NodeJS.
     app.log.info(`admin account created for ${config.auth.admin.email}`);
   if (config.allowPrivate)
     app.log.warn('PULSE_ALLOW_PRIVATE=1: private addresses are allowed; do not use in production');
+  if (config.metricsPublic) app.log.warn("metrics are public and include every monitor's name");
   if (
     config.auth.cookieSecure === false ||
     (config.auth.cookieSecure === 'auto' &&

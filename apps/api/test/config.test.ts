@@ -8,6 +8,13 @@ describe('configuration', () => {
       allowPrivate: false,
     });
   });
+  it('defaults metrics private and parses its explicit public opt-in', () => {
+    expect(readConfig({ DATABASE_PATH: ':memory:' }).metricsPublic).toBe(false);
+    expect(
+      readConfig({ DATABASE_PATH: ':memory:', PULSE_METRICS_PUBLIC: 'true' }).metricsPublic,
+    ).toBe(true);
+    expect(() => readConfig({ DATABASE_PATH: ':memory:', PULSE_METRICS_PUBLIC: '1' })).toThrow();
+  });
   it.each([
     { PULSE_MAX_CONCURRENCY: '0' },
     { PULSE_MAX_CONCURRENCY: '65' },

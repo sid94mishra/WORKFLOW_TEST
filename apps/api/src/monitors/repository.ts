@@ -126,6 +126,14 @@ export class MonitorRepository {
   }
 
   delete(id: string): boolean {
-    return this.db.prepare('DELETE FROM monitors WHERE id = ?').run(id).changes > 0;
+    return this.db.transaction(() => {
+      const changed = this.db.prepare('DELETE FROM monitors WHERE id = ?').run(id).changes > 0;
+      this.db
+        .prepare(
+          'DELETE FROM maintenance_windows WHERE all_monitors=0 AND NOT EXISTS (SELECT 1 FROM maintenance_window_monitors mwm WHERE mwm.window_id=maintenance_windows.id)',
+        )
+        .run();
+      return changed;
+    })();
   }
 }

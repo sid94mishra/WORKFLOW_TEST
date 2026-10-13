@@ -25,6 +25,9 @@ import { authPlugin } from './auth/plugin.js';
 import { authRoutes } from './auth/routes.js';
 import { ApiKeyRepository } from './api-keys/repository.js';
 import { apiKeyRoutes } from './api-keys/routes.js';
+import { MaintenanceRepository } from './maintenance/repository.js';
+import { maintenanceRoutes } from './maintenance/routes.js';
+import { MetricsRegistry, metricsRoutes } from './metrics/routes.js';
 
 // `../package.json` resolves to apps/api/package.json from both src/ and dist/.
 const { version } = JSON.parse(
@@ -69,6 +72,7 @@ export async function buildApp(opts: {
     url: string;
     config?: Record<string, unknown>;
   }) => void;
+  metricsPublic?: boolean;
 }): Promise<FastifyInstance> {
   const db = openDatabase(opts.databasePath);
   try {
@@ -109,7 +113,9 @@ export async function buildApp(opts: {
   const verifier = await createPasswordVerifier(opts.auth?.scryptParams);
   authPlugin(app, sessions, keys);
   const monitors = new MonitorRepository(db);
-  const results = new ResultRepository(db);
+  const maintenance = new MaintenanceRepository(db);
+  const results = new ResultRepository(db, maintenance);
+  const metrics = new MetricsRegistry();
   const channels = new ChannelRepository(db);
   const deliveries = new DeliveryRepository(db);
   const notifier = new Notifier({
@@ -149,6 +155,12 @@ export async function buildApp(opts: {
         record: (monitorId, outcome, configVersion) => {
           const recorded = results.record(monitorId, outcome, configVersion);
           if (recorded?.event) notifier.enqueue(recorded.event);
+          if (recorded) metrics.observe(outcome);
+          if (recorded?.suppressed)
+            app.log.info(
+              { monitorId, windowId: recorded.maintenance?.id, event: recorded.suppressed },
+              'notification suppressed by maintenance window',
+            );
         },
         maxConcurrency: schedulerOptions.maxConcurrency,
         random: schedulerOptions.random,
@@ -183,14 +195,16 @@ export async function buildApp(opts: {
 
   authRoutes(app, db, sessions, limiter, verifier.dummyHash, opts.auth?.cookieSecure ?? 'auto');
   apiKeyRoutes(app, keys);
-  monitorRoutes(app, monitors, results, scheduler);
+  monitorRoutes(app, monitors, results, scheduler, maintenance);
+  maintenanceRoutes(app, maintenance, monitors);
+  metricsRoutes(app, db, maintenance, metrics, { public: opts.metricsPublic ?? false });
   incidentRoutes(app, db);
   channelRoutes(app, channels, monitors, deliveries, notifier, {
     allowPrivate: opts.allowPrivate ?? false,
     resolveHost: opts.egress?.resolveHost,
   });
-  statusRoutes(app, db);
-  badgeRoutes(app, monitors, results);
+  statusRoutes(app, db, maintenance);
+  badgeRoutes(app, monitors, results, maintenance);
 
   app.addHook('onSend', async (request, reply, payload) => {
     reply.header('x-content-type-options', 'nosniff');

@@ -1,5 +1,14 @@
-import { formatDuration, overallStatus, uptimeLevel, type StatusPage } from '@pulse/shared';
+import {
+  formatDuration,
+  overallStatus,
+  uptimeLevel,
+  activeWindowFor,
+  publicMonitorStatus,
+  upcomingOccurrences,
+  type StatusPage,
+} from '@pulse/shared';
 import type { SqliteDatabase } from '../db.js';
+import type { MaintenanceRepository } from '../maintenance/repository.js';
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const esc = (s: string) =>
   s
@@ -8,7 +17,11 @@ const esc = (s: string) =>
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
-export function buildStatusPage(db: SqliteDatabase, now: Date): StatusPage {
+export function buildStatusPage(
+  db: SqliteDatabase,
+  now: Date,
+  maintenance?: MaintenanceRepository,
+): StatusPage {
   const today = now.toISOString().slice(0, 10);
   const dates = Array.from({ length: 90 }, (_, i) => {
     const d = new Date(`${today}T00:00:00.000Z`);
@@ -18,6 +31,7 @@ export function buildStatusPage(db: SqliteDatabase, now: Date): StatusPage {
   const rows = db
     .prepare('SELECT * FROM monitors WHERE public=1 ORDER BY created_at ASC,rowid ASC')
     .all() as any[];
+  const windows = maintenance?.listRelevant(now.toISOString()) ?? [];
   const selectDaily = db.prepare(
     'SELECT * FROM daily_uptime WHERE monitor_id=? AND day BETWEEN ? AND ?',
   );
@@ -37,10 +51,12 @@ export function buildStatusPage(db: SqliteDatabase, now: Date): StatusPage {
     });
     const total = days.reduce((a, x) => a + x.totalChecks, 0),
       ok = days.reduce((a, x) => a + x.okChecks, 0);
+    const active = activeWindowFor(m.id, windows, now);
     return {
       id: m.id,
       name: m.name,
-      status: m.enabled === 1 ? m.status : 'paused',
+      status: publicMonitorStatus({ enabled: m.enabled === 1, status: m.status }, Boolean(active)),
+      maintenance: active,
       lastCheckedAt: m.last_checked_at,
       uptime90dPercent: total ? round2((100 * ok) / total) : null,
       days,
@@ -67,11 +83,36 @@ export function buildStatusPage(db: SqliteDatabase, now: Date): StatusPage {
     )
     .all()
     .map(incident);
+  const to = new Date(now.getTime() + 7 * 86400000);
+  const overlapping = maintenance?.listOverlapping(now.toISOString(), to.toISOString()) ?? [];
+  // Filter before the shared helper applies its 20 occurrence cap, otherwise private-only work
+  // could crowd public entries out of the status page.
+  const publicWindows = overlapping.filter(
+    (window) =>
+      window.monitorIds === 'all' || window.monitorIds.some((id) => rows.some((m) => m.id === id)),
+  );
+  const upcomingMaintenance = upcomingOccurrences(publicWindows, now, to)
+    .map((x) => {
+      const w = x.window;
+      const affected =
+        w.monitorIds === 'all' ? rows : rows.filter((m) => w.monitorIds.includes(m.id));
+      return {
+        id: w.id,
+        title: w.title,
+        startsAt: x.startsAt,
+        endsAt: x.endsAt,
+        active: x.active,
+        allMonitors: w.monitorIds === 'all',
+        monitors: affected.map((m) => ({ id: m.id, name: m.name })),
+      };
+    })
+    .filter((x) => x.monitors.length > 0);
   return {
     generatedAt: now.toISOString(),
     overall: overallStatus(monitors),
     monitors,
     incidents: { open, resolved },
+    upcomingMaintenance,
   };
 }
 export function renderStatusPageHtml(page: StatusPage): string {
@@ -81,6 +122,7 @@ export function renderStatusPageHtml(page: StatusPage): string {
     partial_outage: 'Partial outage',
     major_outage: 'Major outage',
     unknown: 'No data yet',
+    maintenance: 'Scheduled maintenance in progress',
   };
   const status: any = {
     up: 'Up',
@@ -88,6 +130,7 @@ export function renderStatusPageHtml(page: StatusPage): string {
     down: 'Down',
     pending: 'Pending',
     paused: 'Paused',
+    maintenance: 'Maintenance',
   };
   const bars = (m: any) =>
     m.days
@@ -99,5 +142,8 @@ export function renderStatusPageHtml(page: StatusPage): string {
       .join('');
   const incident = (x: any, resolved = false) =>
     `<li data-incident-id="${esc(x.id)}"><strong>${esc(x.monitorName)}</strong> Started <time datetime="${esc(x.startedAt)}">${esc(x.startedAt.slice(0, 16).replace('T', ' ') + ' UTC')}</time>${resolved ? ` Resolved <time datetime="${esc(x.resolvedAt)}">${esc(x.resolvedAt.slice(0, 16).replace('T', ' ') + ' UTC')}</time> · lasted ${formatDuration(x.durationSeconds)} ` : ''}</li>`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="refresh" content="60"><title>Status</title><style>.sr{position:absolute;clip:rect(0,0,0,0)}</style></head><body><section id="overall" data-overall="${page.overall}">${labels[page.overall]}</section>${page.monitors.length ? `<ul>${page.monitors.map((m: any) => `<li data-monitor-id="${esc(m.id)}" data-status="${esc(m.status)}"><strong>${esc(m.name)}</strong> ${status[m.status]} ${m.uptime90dPercent === null ? 'No data' : `${m.uptime90dPercent}% uptime (90 days)`}<ol class="bars" aria-label="Daily uptime, last 90 days">${bars(m)}</ol></li>`).join('')}</ul>` : '<p>No public monitors yet.</p>'}<section><h2>Open incidents</h2>${page.incidents.open.length ? `<ul>${page.incidents.open.map((x) => incident(x)).join('')}</ul>` : '<p>No open incidents.</p>'}</section><section><h2>Resolved incidents</h2>${page.incidents.resolved.length ? `<ul>${page.incidents.resolved.map((x) => incident(x, true)).join('')}</ul>` : '<p>No incidents in the recent past.</p>'}</section><footer>Generated ${esc(page.generatedAt)} · Powered by Pulse</footer></body></html>`;
+  const maintenance = (page.upcomingMaintenance ?? []).length
+    ? `<ul>${page.upcomingMaintenance!.map((x: any) => `<li data-maintenance-id="${esc(x.id)}"><strong>${esc(x.title)}</strong> ${esc(x.startsAt.slice(0, 16).replace('T', ' ') + ' UTC')}–${esc(x.endsAt.slice(0, 16).replace('T', ' ') + ' UTC')} ${x.active ? 'In progress' : ''} · ${x.allMonitors ? 'All services' : x.monitors.map((m: any) => esc(m.name)).join(', ')}</li>`).join('')}</ul>`
+    : '<p>No maintenance scheduled.</p>';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="refresh" content="60"><title>Status</title><style>.sr{position:absolute;clip:rect(0,0,0,0)}.maintenance{color:#007ec6}</style></head><body><section id="overall" data-overall="${page.overall}">${labels[page.overall]}</section><section id="maintenance"><h2>Upcoming maintenance</h2>${maintenance}</section>${page.monitors.length ? `<ul>${page.monitors.map((m: any) => `<li data-monitor-id="${esc(m.id)}" data-status="${esc(m.status)}"><strong>${esc(m.name)}</strong> ${status[m.status]} ${m.maintenance ? `<span class="maintenance">Maintenance: ${esc(m.maintenance.title)} (until <time datetime="${esc(m.maintenance.endsAt)}">${esc(m.maintenance.endsAt.slice(11, 16))} UTC</time>)</span>` : ''} ${m.uptime90dPercent === null ? 'No data' : `${m.uptime90dPercent}% uptime (90 days)`}<ol class="bars" aria-label="Daily uptime, last 90 days">${bars(m)}</ol></li>`).join('')}</ul>` : '<p>No public monitors yet.</p>'}<section><h2>Open incidents</h2>${page.incidents.open.length ? `<ul>${page.incidents.open.map((x) => incident(x)).join('')}</ul>` : '<p>No open incidents.</p>'}</section><section><h2>Resolved incidents</h2>${page.incidents.resolved.length ? `<ul>${page.incidents.resolved.map((x) => incident(x, true)).join('')}</ul>` : '<p>No incidents in the recent past.</p>'}</section><footer>Generated ${esc(page.generatedAt)} · Powered by Pulse</footer></body></html>`;
 }

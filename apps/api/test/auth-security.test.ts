@@ -456,7 +456,7 @@ describe('API key storage, authorization, and CSRF', () => {
       const methods = Array.isArray(route.method) ? route.method : [route.method];
       return (
         methods.some((method) => method !== 'HEAD') &&
-        route.url.startsWith('/api/v1/') &&
+        (route.url.startsWith('/api/v1/') || route.url === '/metrics') &&
         route.config?.public !== true
       );
     });
