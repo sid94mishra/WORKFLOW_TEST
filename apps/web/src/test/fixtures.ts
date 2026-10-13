@@ -5,6 +5,7 @@ import type {
   Channel,
   CheckResult,
   Incident,
+  MaintenanceWindow,
   Monitor,
   SessionInfo,
   UptimeSummary,
@@ -91,6 +92,25 @@ export function makeChannel(overrides: Partial<Channel> = {}): Channel {
   };
 }
 
+let mseq = 0;
+export function makeMaintenance(overrides: Partial<MaintenanceWindow> = {}): MaintenanceWindow {
+  mseq += 1;
+  return {
+    id: `50000000-0000-4000-8000-${String(mseq).padStart(12, '0')}`,
+    title: 'Database upgrade',
+    monitorIds: 'all',
+    startsAt: '2026-10-20T01:00:00.000Z',
+    endsAt: '2026-10-20T03:00:00.000Z',
+    repeat: null,
+    createdBy: null,
+    createdAt: '2026-10-11T09:30:00.000Z',
+    updatedAt: '2026-10-11T09:30:00.000Z',
+    active: false,
+    nextOccurrence: { startsAt: '2026-10-20T01:00:00.000Z', endsAt: '2026-10-20T03:00:00.000Z' },
+    ...overrides,
+  };
+}
+
 export function makeSession(email = 'admin@example.com'): SessionInfo {
   return {
     user: { id: '30000000-0000-4000-8000-000000000001', email },
@@ -129,6 +149,10 @@ export function fakeClient(overrides: Partial<ApiClient> = {}): ApiClient {
     updateChannel: vi.fn(),
     deleteChannel: vi.fn(),
     testChannel: vi.fn(),
+    listMaintenance: vi.fn().mockResolvedValue([]),
+    createMaintenance: vi.fn(),
+    updateMaintenance: vi.fn(),
+    deleteMaintenance: vi.fn(),
     getSession: vi.fn().mockResolvedValue(makeSession()),
     login: vi.fn(),
     logout: vi.fn().mockResolvedValue(undefined),

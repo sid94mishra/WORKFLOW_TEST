@@ -21,6 +21,9 @@ import type {
   DeliveryAttempt,
   Incident,
   IncidentsQuery,
+  MaintenanceWindow,
+  MaintenanceWindowCreateInput,
+  MaintenanceWindowUpdate,
   Monitor,
   MonitorUpdate,
   UptimeSummary,
@@ -58,6 +61,10 @@ export interface ApiClient {
   updateChannel(id: string, patch: ChannelUpdate): Promise<Channel>;
   deleteChannel(id: string): Promise<void>;
   testChannel(id: string): Promise<DeliveryAttempt>;
+  listMaintenance(signal?: AbortSignal): Promise<MaintenanceWindow[]>;
+  createMaintenance(input: MaintenanceWindowCreateInput): Promise<MaintenanceWindow>;
+  updateMaintenance(id: string, patch: MaintenanceWindowUpdate): Promise<MaintenanceWindow>;
+  deleteMaintenance(id: string): Promise<void>;
   getSession(signal?: AbortSignal): Promise<SessionInfo>;
   login(input: LoginRequest): Promise<SessionInfo>;
   logout(): Promise<void>;
@@ -258,6 +265,25 @@ export function createApiClient(
       return unwrap<DeliveryAttempt>(
         await request(`/api/v1/channels/${encodeURIComponent(id)}/test`, { method: 'POST' }),
       );
+    },
+    async listMaintenance(signal) {
+      return unwrap<MaintenanceWindow[]>(await request('/api/v1/maintenance', { signal }));
+    },
+    async createMaintenance(input) {
+      return unwrap<MaintenanceWindow>(
+        await request('/api/v1/maintenance', { method: 'POST', body: input }),
+      );
+    },
+    async updateMaintenance(id, patch) {
+      return unwrap<MaintenanceWindow>(
+        await request(`/api/v1/maintenance/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: patch,
+        }),
+      );
+    },
+    async deleteMaintenance(id) {
+      await request(`/api/v1/maintenance/${encodeURIComponent(id)}`, { method: 'DELETE' });
     },
   };
 }
