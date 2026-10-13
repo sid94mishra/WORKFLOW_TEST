@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MonitorStatusSchema } from './status.js';
+import { ActiveMaintenanceSchema } from './maintenance.js';
 
 export const HTTP_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const;
 export const MONITOR_DEFAULTS = {
@@ -66,6 +67,11 @@ export const MonitorSchema = z
     status: MonitorStatusSchema,
     lastCheckedAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime(),
+    /**
+     * Read-only, computed per request (iteration 5): the window putting this monitor in
+     * maintenance now, or null. The API always sends it; optional so older payloads still parse.
+     */
+    maintenance: ActiveMaintenanceSchema.nullable().optional(),
   })
   .strict()
   .superRefine(headKeywordRule);
