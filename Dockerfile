@@ -1,9 +1,9 @@
-FROM node:22-alpine AS base
+FROM node:22-alpine3.24 AS base
 RUN corepack enable
 WORKDIR /repo
 
-FROM node:22-alpine AS build
-RUN corepack enable && apk add --no-cache python3 make g++
+FROM node:22-alpine3.24 AS build
+RUN corepack enable && apk add --no-cache python3~=3.14 make~=4.4 g++~=15.2
 WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/api/package.json apps/api/package.json
@@ -15,7 +15,7 @@ COPY apps apps
 COPY packages packages
 RUN pnpm -r build && pnpm --filter @pulse/api deploy --prod --legacy /out && cp -R apps/web/dist /out/web
 
-FROM node:22-alpine AS runtime
+FROM node:22-alpine3.24 AS runtime
 WORKDIR /app
 COPY --from=build --chown=node:node /out /app
 RUN mkdir -p /data && chown node:node /data
