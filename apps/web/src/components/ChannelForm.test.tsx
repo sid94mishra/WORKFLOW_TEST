@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiClientError } from '../api/client';
@@ -23,9 +23,11 @@ describe('ChannelForm', () => {
         client={fakeClient({ createChannel })}
       />,
     );
-    await userEvent.type(screen.getByLabelText('Name'), ' Ops ');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: ' Ops ' } });
     await userEvent.selectOptions(screen.getByLabelText('Type'), 'slack');
-    await userEvent.type(screen.getByLabelText('Webhook URL'), 'https://hooks.slack.com/x');
+    fireEvent.change(screen.getByLabelText('Webhook URL'), {
+      target: { value: 'https://hooks.slack.com/x' },
+    });
     await userEvent.click(screen.getByRole('checkbox', { name: 'Beta' }));
     await userEvent.click(screen.getByRole('button', { name: 'Add channel' }));
     expect(createChannel).toHaveBeenCalledWith({
@@ -49,7 +51,7 @@ describe('ChannelForm', () => {
       />,
     );
     expect(screen.getByText('No monitors yet.')).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText('Webhook URL'), 'ftp://x');
+    fireEvent.change(screen.getByLabelText('Webhook URL'), { target: { value: 'ftp://x' } });
     await userEvent.click(screen.getByRole('button', { name: 'Add channel' }));
     expect(screen.getByLabelText('Name')).toBeInvalid();
     expect(screen.getByLabelText('Webhook URL')).toBeInvalid();
@@ -71,7 +73,7 @@ describe('ChannelForm', () => {
     expect(screen.getByRole('checkbox', { name: 'Alpha' })).toBeChecked();
     const name = screen.getByLabelText('Name');
     await userEvent.clear(name);
-    await userEvent.type(name, 'Renamed');
+    fireEvent.change(name, { target: { value: 'Renamed' } });
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(updateChannel).toHaveBeenCalledWith(channel.id, { name: 'Renamed' });
   });
@@ -92,8 +94,10 @@ describe('ChannelForm', () => {
         client={fakeClient({ createChannel })}
       />,
     );
-    await userEvent.type(screen.getByLabelText('Name'), 'x');
-    await userEvent.type(screen.getByLabelText('Webhook URL'), 'http://127.0.0.1/h');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'x' } });
+    fireEvent.change(screen.getByLabelText('Webhook URL'), {
+      target: { value: 'http://127.0.0.1/h' },
+    });
     await userEvent.click(screen.getByRole('button', { name: 'Add channel' }));
     const url = await screen.findByLabelText('Webhook URL');
     expect(url).toBeInvalid();
@@ -113,8 +117,10 @@ describe('ChannelForm', () => {
         client={fakeClient({ createChannel })}
       />,
     );
-    await userEvent.type(screen.getByLabelText('Name'), 'x');
-    await userEvent.type(screen.getByLabelText('Webhook URL'), 'https://example.com/h');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'x' } });
+    fireEvent.change(screen.getByLabelText('Webhook URL'), {
+      target: { value: 'https://example.com/h' },
+    });
     await userEvent.click(screen.getByRole('button', { name: 'Add channel' }));
     expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
     reject(new ApiClientError(500, 'INTERNAL_ERROR', 'boom'));

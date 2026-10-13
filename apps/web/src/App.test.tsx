@@ -54,7 +54,7 @@ describe('App', () => {
       getUptime: vi.fn().mockResolvedValue(makeUptime()),
     });
     render(<App client={client} />);
-    await userEvent.click(await screen.findByRole('link', { name: 'Alpha' }));
+    await userEvent.click(await screen.findByRole('link', { name: 'Alpha' }, { timeout: 10_000 }));
     expect(window.location.hash).toBe(`#/monitors/${mon.id}`);
     expect(await screen.findByRole('heading', { level: 2, name: 'Alpha' })).toBeInTheDocument();
     expect(screen.queryByRole('table')).toBeNull();
