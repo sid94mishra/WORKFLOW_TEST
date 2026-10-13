@@ -68,7 +68,7 @@ export class MaintenanceRepository {
       'SELECT * FROM maintenance_windows WHERE starts_at<? AND ends_at>?',
     );
     this.selectMonitorRows = db.prepare(
-      'SELECT window_id,monitor_id FROM maintenance_window_monitors ORDER BY rowid',
+      'SELECT window_id,monitor_id FROM maintenance_window_monitors WHERE window_id IN (SELECT value FROM json_each(?)) ORDER BY rowid',
     );
     this.deleteMonitorRows = db.prepare(
       'DELETE FROM maintenance_window_monitors WHERE window_id=?',
@@ -82,10 +82,16 @@ export class MaintenanceRepository {
     );
   }
   private rows(statement: { all(...params: unknown[]): unknown[] }, ...params: unknown[]) {
+    const rows = statement.all(...params) as DbRow[];
+    if (rows.length === 0) return [];
+
     const ids = new Map<string, string[]>();
-    for (const row of this.selectMonitorRows.all() as { window_id: string; monitor_id: string }[])
+    for (const row of this.selectMonitorRows.all(JSON.stringify(rows.map((row) => row.id))) as {
+      window_id: string;
+      monitor_id: string;
+    }[])
       ids.set(row.window_id, [...(ids.get(row.window_id) ?? []), row.monitor_id]);
-    return (statement.all(...params) as DbRow[]).map((r) => map(r, ids.get(r.id) ?? []));
+    return rows.map((r) => map(r, ids.get(r.id) ?? []));
   }
   list() {
     return this.rows(this.selectAll);
