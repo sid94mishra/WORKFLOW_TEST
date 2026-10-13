@@ -5,7 +5,7 @@ monitors (URL, method, expected status, optional keyword, interval, timeout). Pu
 and records the results. It is built on free, open-source software only and stores everything in
 a single SQLite file.
 
-> **Status: Iteration 4 (authentication, API keys and container deployment).** Pulse schedules
+> **Status: Iteration 5 (maintenance windows and Prometheus metrics).** Pulse schedules
 > enabled monitors, records incidents, publishes status pages, and protects its management API
 > with browser sessions and scoped API keys.
 
@@ -93,6 +93,9 @@ Migrations in `apps/api/migrations/*.sql` are applied automatically on startup a
 | `POST`             | `/api/v1/channels/:id/test`            | Send a test notification                                  |
 | `GET`              | `/api/v1/channels/:id/deliveries`      | Recent delivery attempts                                  |
 | `GET`              | `/api/v1/status`                       | Public status page data                                   |
+| `GET/POST`         | `/api/v1/maintenance`                  | List or schedule maintenance windows                      |
+| `GET/PATCH/DELETE` | `/api/v1/maintenance/:id`              | Read, update or delete a maintenance window               |
+| `GET`              | `/metrics`                             | Prometheus metrics (authenticated by default)             |
 | `POST`             | `/api/v1/auth/login`                   | Create a browser session                                  |
 | `GET/POST`         | `/api/v1/auth/session`, `/auth/logout` | Get or end the browser session                            |
 | `GET/POST`         | `/api/v1/api-keys`                     | List or create a scoped API key                           |
@@ -104,6 +107,9 @@ Errors use `{ error: { code, message, issues? } }`. Codes are `VALIDATION_ERROR`
 `NOT_FOUND`, `UNSUPPORTED_MEDIA_TYPE`, `UNAUTHORIZED`, `FORBIDDEN`, `CSRF_FAILED`, `RATE_LIMITED`
 and `INTERNAL_ERROR`. The full contract and the field rules
 are in [docs/specs/iteration-1.md](docs/specs/iteration-1.md).
+
+Maintenance windows suppress new incident notifications while checks continue to record truthful
+uptime. Prometheus-compatible metrics are available at `/metrics`; see the [operations guide](docs/operations.md), the [Iteration 5 spec](docs/specs/maintenance-windows-and-metrics.md), and [ADR 0008](docs/adr/0008-maintenance-windows-and-metrics.md).
 
 Browser writes use the signed cookie plus `X-Pulse-CSRF`. Scripts use a scoped bearer key:
 
