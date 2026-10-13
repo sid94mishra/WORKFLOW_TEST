@@ -117,7 +117,7 @@ export function MonitorDetail({ id, client = api }: { id: string; client?: ApiCl
         <h2 className="text-xl font-semibold">{m.name}</h2>
         <p className="break-all text-sm text-slate-700">{m.url}</p>
         <div className="flex flex-wrap items-center gap-3 text-sm text-slate-700">
-          <StatusBadge status={m.status} enabled={m.enabled} />
+          <StatusBadge status={m.status} enabled={m.enabled} maintenance={m.maintenance} />
           <span>
             {m.lastCheckedAt ? (
               <>

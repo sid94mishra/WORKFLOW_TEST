@@ -10,6 +10,14 @@ export type {
 
 export type { Monitor, MonitorUpdate } from '@pulse/shared';
 export type {
+  ActiveMaintenance,
+  MaintenanceMonitorIds,
+  MaintenanceWindow,
+  MaintenanceWindowCreateInput,
+  MaintenanceWindowUpdate,
+  WeeklyRepeat,
+} from '@pulse/shared';
+export type {
   Channel,
   ChannelCreateInput,
   ChannelKind,

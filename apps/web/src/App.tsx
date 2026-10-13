@@ -7,6 +7,7 @@ import { AuthGate } from './components/AuthGate';
 import { AddMonitorForm } from './components/AddMonitorForm';
 import { ChannelsView } from './components/ChannelsView';
 import { IncidentsView } from './components/IncidentsView';
+import { MaintenanceView } from './components/MaintenanceView';
 import { MonitorDetail } from './components/MonitorDetail';
 import { useHashRoute } from './hooks/useHashRoute';
 import { MonitorList, type MonitorListState } from './components/MonitorList';
@@ -20,6 +21,7 @@ const NAV: {
   { label: 'Monitors', href: '#/', current: (r) => r === 'dashboard' || r === 'monitor' },
   { label: 'Incidents', href: '#/incidents', current: (r) => r === 'incidents' },
   { label: 'Channels', href: '#/channels', current: (r) => r === 'channels' },
+  { label: 'Maintenance', href: '#/maintenance', current: (r) => r === 'maintenance' },
   { label: 'API keys', href: '#/settings/api-keys', current: (r) => r === 'apiKeys' },
   { label: 'Status page', href: '/status', external: true },
 ];
@@ -140,6 +142,8 @@ function Dashboard({
           <IncidentsView client={client} />
         ) : route.name === 'channels' ? (
           <ChannelsView client={client} />
+        ) : route.name === 'maintenance' ? (
+          <MaintenanceView client={client} />
         ) : route.name === 'apiKeys' ? (
           <ApiKeysView client={client} />
         ) : (

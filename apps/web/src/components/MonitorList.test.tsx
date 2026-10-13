@@ -56,4 +56,23 @@ describe('MonitorList', () => {
       `#/monitors/${monitors[0]!.id}`,
     );
   });
+
+  it('shows Maintenance (titled with the window) for enabled monitors in maintenance', () => {
+    const maintenance = {
+      id: '50000000-0000-4000-8000-000000000001',
+      title: 'DB upgrade',
+      startsAt: '2026-10-20T01:00:00.000Z',
+      endsAt: '2026-10-20T03:30:00.000Z',
+    };
+    const monitors = [
+      makeMonitor({ id: '1', name: 'Alpha', status: 'down', maintenance }),
+      makeMonitor({ id: '2', name: 'Beta', status: 'up', enabled: false, maintenance }),
+    ];
+    render(<MonitorList state={{ status: 'ready', monitors }} onRetry={vi.fn()} />);
+    const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1);
+    const badge = within(rows[0]!).getByText('Maintenance');
+    expect(badge).toHaveAttribute('title', 'DB upgrade · until 03:30 UTC');
+    expect(within(rows[0]!).queryByText('Down')).toBeNull();
+    expect(within(rows[1]!).getByText('Paused')).toBeInTheDocument();
+  });
 });

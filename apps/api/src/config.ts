@@ -15,6 +15,7 @@ const envSchema = z
     PULSE_COOKIE_SECURE: z.enum(['auto', 'true', 'false']).default('auto'),
     PULSE_TRUST_PROXY: z.string().default('false'),
     PULSE_WEB_DIR: z.string().min(1).optional(),
+    PULSE_METRICS_PUBLIC: z.enum(['true', 'false']).default('false'),
   })
   .superRefine((value, ctx) => {
     if (Boolean(value.PULSE_ADMIN_EMAIL) !== Boolean(value.PULSE_ADMIN_PASSWORD)) {
@@ -40,6 +41,7 @@ export type Config = {
   };
   trustProxy: boolean | number | string[];
   webDir?: string;
+  metricsPublic: boolean;
 };
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -80,5 +82,6 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): Config {
     },
     trustProxy,
     webDir: value.PULSE_WEB_DIR ? resolve(value.PULSE_WEB_DIR) : undefined,
+    metricsPublic: value.PULSE_METRICS_PUBLIC === 'true',
   };
 }

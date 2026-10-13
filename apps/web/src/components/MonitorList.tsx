@@ -70,7 +70,7 @@ export function MonitorList({ state, onRetry }: MonitorListProps) {
               <td className="px-3 py-2 text-slate-700">{m.intervalSeconds}s</td>
               <td className="px-3 py-2 text-slate-700">{m.expectedStatus}</td>
               <td className="px-3 py-2">
-                <StatusBadge status={m.status} enabled={m.enabled} />
+                <StatusBadge status={m.status} enabled={m.enabled} maintenance={m.maintenance} />
               </td>
             </tr>
           ))}

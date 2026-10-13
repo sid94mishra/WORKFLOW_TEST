@@ -4,6 +4,7 @@ export type Route =
   | { name: 'dashboard' }
   | { name: 'incidents' }
   | { name: 'channels' }
+  | { name: 'maintenance' }
   | { name: 'apiKeys' }
   | { name: 'monitor'; id: string };
 
@@ -18,6 +19,7 @@ export function parseHash(hash: string): Route {
   }
   if (/^#\/incidents\/?$/.test(hash)) return { name: 'incidents' };
   if (/^#\/channels\/?$/.test(hash)) return { name: 'channels' };
+  if (/^#\/maintenance\/?$/.test(hash)) return { name: 'maintenance' };
   if (/^#\/settings\/api-keys\/?$/.test(hash)) return { name: 'apiKeys' };
   return { name: 'dashboard' };
 }

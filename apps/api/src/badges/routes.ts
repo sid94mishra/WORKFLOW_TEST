@@ -1,8 +1,15 @@
 import type { FastifyInstance } from 'fastify';
-import { BadgeQuerySchema, formatBadgePercent } from '@pulse/shared';
+import {
+  BadgeQuerySchema,
+  formatBadgePercent,
+  STATUS_BADGE_COLORS,
+  activeWindowFor,
+  publicMonitorStatus,
+} from '@pulse/shared';
 import { apiError, issues } from '../errors.js';
 import type { MonitorRepository } from '../monitors/repository.js';
 import type { ResultRepository } from '../results/repository.js';
+import type { MaintenanceRepository } from '../maintenance/repository.js';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const esc = (s: string) =>
   s
@@ -32,6 +39,7 @@ export function badgeRoutes(
   app: FastifyInstance,
   monitors: MonitorRepository,
   results: ResultRepository,
+  maintenance?: MaintenanceRepository,
 ) {
   app.get<{ Params: { file: string } }>('/badge/:file', async (req, reply) => {
     const m = /^(.+)\.svg$/.exec(req.params.file);
@@ -44,16 +52,14 @@ export function badgeRoutes(
       right: string,
       c: string;
     if (q.data.type === 'status') {
-      right = monitor.enabled ? monitor.status : 'paused';
-      c = (
-        {
-          up: '#4c1',
-          degraded: '#dfb317',
-          down: '#e05d44',
-          pending: '#9f9f9f',
-          paused: '#9f9f9f',
-        } as any
-      )[right];
+      const now = new Date();
+      right = publicMonitorStatus(
+        monitor,
+        Boolean(
+          activeWindowFor(monitor.id, maintenance?.listRelevant(now.toISOString()) ?? [], now),
+        ),
+      );
+      c = STATUS_BADGE_COLORS[right as keyof typeof STATUS_BADGE_COLORS];
     } else {
       const uptime = results.uptime(monitor.id, '24h');
       right = uptime.uptimePercent === null ? 'n/a' : formatBadgePercent(uptime.uptimePercent);

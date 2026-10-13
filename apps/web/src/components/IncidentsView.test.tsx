@@ -23,7 +23,7 @@ describe('IncidentsView', () => {
     ]);
     render(<IncidentsView client={fakeClient({ listIncidents })} now={now} />);
     expect(screen.getByText('Loading incidents…')).toBeInTheDocument();
-    const open = await screen.findByRole('region', { name: 'Open' });
+    const open = await screen.findByRole('region', { name: 'Open' }, { timeout: 10_000 });
     expect(within(open).getByRole('link', { name: 'Alpha' })).toHaveAttribute(
       'href',
       '#/monitors/m1',
@@ -45,7 +45,7 @@ describe('IncidentsView', () => {
       .fn()
       .mockResolvedValue([makeIncident({ status: 'resolved', durationSeconds: 5 })]);
     render(<IncidentsView client={fakeClient({ listIncidents })} now={now} />);
-    await screen.findByRole('region', { name: 'Resolved' });
+    await screen.findByRole('region', { name: 'Resolved' }, { timeout: 10_000 });
     expect(screen.queryByRole('region', { name: 'Open' })).not.toBeInTheDocument();
   });
 

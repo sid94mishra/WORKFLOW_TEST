@@ -9,8 +9,11 @@ import {
   type UptimeWindow,
   type Incident,
   type Monitor,
+  activeWindowFor,
+  type ActiveMaintenance,
 } from '@pulse/shared';
 import type { SqliteDatabase } from '../db.js';
+import type { MaintenanceRepository } from '../maintenance/repository.js';
 
 type ResultRow = {
   id: string;
@@ -68,7 +71,12 @@ export type IncidentEvent = {
   incident: Incident;
   monitor: Monitor;
 };
-export type RecordResult = { result: CheckResult; event: IncidentEvent | null } & CheckResult;
+export type RecordResult = {
+  result: CheckResult;
+  event: IncidentEvent | null;
+  maintenance: ActiveMaintenance | null;
+  suppressed: IncidentEvent['type'] | null;
+} & CheckResult;
 
 export class ResultRepository {
   private readonly recordTransaction: (
@@ -77,7 +85,10 @@ export class ResultRepository {
     expectedConfigVersion?: number,
   ) => RecordResult | undefined;
 
-  constructor(private readonly db: SqliteDatabase) {
+  constructor(
+    private readonly db: SqliteDatabase,
+    private readonly maintenance?: MaintenanceRepository,
+  ) {
     // Prepared once: record() runs for every check.
     const selectFailures = db.prepare('SELECT * FROM monitors WHERE id = ?');
     const insertResult = db.prepare(
@@ -149,7 +160,21 @@ export class ResultRepository {
           lastCheckedAt: outcome.checkedAt,
           createdAt: String(monitor.created_at),
         };
+        const maintenance = this.maintenance
+          ? activeWindowFor(
+              monitorId,
+              this.maintenance.listRelevant(outcome.checkedAt),
+              new Date(outcome.checkedAt),
+            )
+          : null;
+        let suppressed: IncidentEvent['type'] | null = null;
         if (status === 'down' && !open) {
+          if (maintenance) {
+            // The result/status still persist, but a window must not create an incident that
+            // would remain open after maintenance ends.
+            suppressed = 'incident.opened';
+            return { ...result, result, event: null, maintenance, suppressed };
+          }
           const incidentId = randomUUID();
           insertIncident.run(incidentId, monitorId, outcome.error, outcome.checkedAt);
           event = {
@@ -184,8 +209,12 @@ export class ResultRepository {
             },
             monitor: monitorObject,
           };
+          if (maintenance) {
+            suppressed = event.type;
+            event = null;
+          }
         }
-        return { ...result, result, event };
+        return { ...result, result, event, maintenance, suppressed };
       },
     );
   }

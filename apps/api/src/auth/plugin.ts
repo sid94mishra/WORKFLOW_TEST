@@ -34,7 +34,7 @@ export function authPlugin(
     // Gate on the matched route pattern: the router percent-decodes paths, so the raw URL
     // `/%61pi/v1/monitors` reaches `/api/v1/monitors`. Unmatched requests fall back to the raw path.
     const path = request.routeOptions.url ?? request.url.split('?')[0]!;
-    if (!path.startsWith('/api/v1/')) return;
+    if (!path.startsWith('/api/v1/') && path !== '/metrics') return;
     if ((request.routeOptions.config as { public?: boolean }).public === true) return;
     const authorization = request.headers.authorization;
     if (authorization !== undefined) {
