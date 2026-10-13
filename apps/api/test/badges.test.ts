@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 import type { FastifyInstance } from 'fastify';
-import { buildApp } from '../src/app.js';
+import { buildTestApp as buildApp } from './helpers.js';
 
 let app: FastifyInstance | undefined;
 const create = (name: string, publicFlag: boolean) =>

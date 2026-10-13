@@ -5,6 +5,14 @@ import type {
   HealthResponse,
   MonitorCreateInput,
 } from '@pulse/shared';
+import { CSRF_HEADER } from './auth-types';
+import type {
+  ApiKey,
+  ApiKeyCreateInput,
+  ApiKeyCreated,
+  LoginRequest,
+  SessionInfo,
+} from './auth-types';
 import type {
   Channel,
   ChannelCreateInput,
@@ -19,12 +27,16 @@ import type {
   UptimeWindow,
 } from './types';
 
+/** Codes added by the auth iteration; fold into ErrorCode once @pulse/shared exports them. */
+export type AuthErrorCode = 'UNAUTHORIZED' | 'FORBIDDEN' | 'CSRF_FAILED' | 'RATE_LIMITED';
+
 export class ApiClientError extends Error {
   constructor(
     readonly status: number,
-    readonly code: ErrorCode | 'NETWORK_ERROR',
+    readonly code: ErrorCode | AuthErrorCode | 'NETWORK_ERROR',
     message: string,
     readonly issues: ApiIssue[] = [],
+    readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = 'ApiClientError';
@@ -46,6 +58,15 @@ export interface ApiClient {
   updateChannel(id: string, patch: ChannelUpdate): Promise<Channel>;
   deleteChannel(id: string): Promise<void>;
   testChannel(id: string): Promise<DeliveryAttempt>;
+  getSession(signal?: AbortSignal): Promise<SessionInfo>;
+  login(input: LoginRequest): Promise<SessionInfo>;
+  logout(): Promise<void>;
+  listApiKeys(signal?: AbortSignal): Promise<ApiKey[]>;
+  createApiKey(input: ApiKeyCreateInput): Promise<ApiKeyCreated>;
+  renameApiKey(id: string, name: string): Promise<ApiKey>;
+  revokeApiKey(id: string): Promise<void>;
+  /** Registers the callback invoked when a (non-login) request gets 401. Returns an unsubscribe. */
+  setUnauthorizedHandler(handler: (() => void) | null): void;
 }
 
 function isApiError(body: unknown): body is ApiError {
@@ -59,22 +80,30 @@ function isApiError(body: unknown): body is ApiError {
   );
 }
 
-export function createApiClient(opts: { baseUrl?: string; fetch?: typeof fetch } = {}): ApiClient {
+export function createApiClient(
+  opts: { baseUrl?: string; fetch?: typeof fetch; onUnauthorized?: () => void } = {},
+): ApiClient {
   const baseUrl = opts.baseUrl ?? '';
+  let csrfToken: string | null = null;
+  let onUnauthorized: (() => void) | null = opts.onUnauthorized ?? null;
 
   async function request(
     path: string,
-    init: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+    init: { method?: string; body?: unknown; signal?: AbortSignal; isLogin?: boolean } = {},
   ): Promise<unknown> {
     const doFetch = opts.fetch ?? globalThis.fetch.bind(globalThis);
     const hasBody = init.body !== undefined;
+    const method = init.method ?? 'GET';
+    const mutating = method !== 'GET' && method !== 'HEAD';
     let res: Response;
     try {
       res = await doFetch(`${baseUrl}${path}`, {
-        method: init.method ?? 'GET',
+        method,
         signal: init.signal,
+        credentials: 'same-origin',
         headers: {
           accept: 'application/json',
+          ...(mutating && csrfToken ? { [CSRF_HEADER]: csrfToken } : {}),
           ...(hasBody ? { 'content-type': 'application/json' } : {}),
         },
         body: hasBody ? JSON.stringify(init.body) : undefined,
@@ -94,18 +123,71 @@ export function createApiClient(opts: { baseUrl?: string; fetch?: typeof fetch }
     }
 
     if (!res.ok) {
+      if (res.status === 401) {
+        csrfToken = null;
+        if (!init.isLogin) onUnauthorized?.();
+      }
+      const retryHeader = Number(res.headers.get('retry-after'));
+      const retryAfter = Number.isFinite(retryHeader) && retryHeader > 0 ? retryHeader : undefined;
       if (isApiError(body)) {
         const { code, message, issues } = body.error;
-        throw new ApiClientError(res.status, code, message, issues ?? []);
+        throw new ApiClientError(res.status, code, message, issues ?? [], retryAfter);
       }
-      throw new ApiClientError(res.status, 'INTERNAL_ERROR', `Request failed (${res.status})`);
+      throw new ApiClientError(
+        res.status,
+        'INTERNAL_ERROR',
+        `Request failed (${res.status})`,
+        [],
+        retryAfter,
+      );
     }
     return body;
   }
 
   const unwrap = <T>(body: unknown): T => (body as { data: T }).data;
 
+  const remember = (session: SessionInfo) => {
+    csrfToken = session.csrfToken;
+    return session;
+  };
+
   return {
+    setUnauthorizedHandler(handler) {
+      onUnauthorized = handler;
+    },
+    async getSession(signal) {
+      return remember(unwrap<SessionInfo>(await request('/api/v1/auth/session', { signal })));
+    },
+    async login(input) {
+      return remember(
+        unwrap<SessionInfo>(
+          await request('/api/v1/auth/login', { method: 'POST', body: input, isLogin: true }),
+        ),
+      );
+    },
+    async logout() {
+      await request('/api/v1/auth/logout', { method: 'POST' });
+      csrfToken = null;
+    },
+    async listApiKeys(signal) {
+      return unwrap<ApiKey[]>(await request('/api/v1/api-keys', { signal }));
+    },
+    async createApiKey(input) {
+      return unwrap<ApiKeyCreated>(
+        await request('/api/v1/api-keys', { method: 'POST', body: input }),
+      );
+    },
+    async renameApiKey(id, name) {
+      return unwrap<ApiKey>(
+        await request(`/api/v1/api-keys/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: { name },
+        }),
+      );
+    },
+    async revokeApiKey(id) {
+      await request(`/api/v1/api-keys/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
     async health() {
       return (await request('/health')) as HealthResponse;
     },

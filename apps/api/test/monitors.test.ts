@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import type { SqliteDatabase } from '../src/db.js';
-import { buildApp } from '../src/app.js';
+import { buildTestApp as buildApp } from './helpers.js';
+import { buildApp as buildProductionApp } from '../src/app.js';
 
 let app: FastifyInstance | undefined;
 type TestApp = FastifyInstance & { db: SqliteDatabase };
@@ -174,7 +175,14 @@ describe('monitor validation and errors', () => {
   });
 
   it('hides internal error details in 500 responses', async () => {
-    app = await buildApp({ databasePath: ':memory:' });
+    app = await buildProductionApp({
+      databasePath: ':memory:',
+      auth: {
+        admin: { email: 'test-admin@example.com', password: 'test-password-that-is-long-enough' },
+        sessionSecret: 't'.repeat(32),
+        scryptParams: { N: 1024, r: 8, p: 1 },
+      },
+    });
     app.get('/boom', async () => {
       throw new Error('secret internals');
     });

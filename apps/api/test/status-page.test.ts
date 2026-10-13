@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { StatusPageSchema } from '@pulse/shared';
-import { buildApp } from '../src/app.js';
+import { buildTestApp as buildApp } from './helpers.js';
 import { MonitorRepository } from '../src/monitors/repository.js';
 import { ResultRepository } from '../src/results/repository.js';
 

@@ -7,9 +7,13 @@ import { fakeClient, makeMonitor, makeUptime } from './test/fixtures';
 
 describe('App', () => {
   it('lists monitors from the API', async () => {
-    const listMonitors = vi.fn().mockResolvedValue([makeMonitor({ name: 'Alpha' })]);
+    const listMonitors = vi
+      .fn()
+      .mockImplementation(
+        () => new Promise((r) => setTimeout(() => r([makeMonitor({ name: 'Alpha' })]), 30)),
+      );
     render(<App client={fakeClient({ listMonitors })} />);
-    expect(screen.getByText('Loading monitors…')).toBeInTheDocument();
+    expect(await screen.findByText('Loading monitors…')).toBeInTheDocument();
     const table = await screen.findByRole('table', { name: 'Monitors' });
     expect(within(table).getByText('Alpha')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1, name: 'Pulse' })).toBeInTheDocument();
@@ -62,7 +66,7 @@ describe('App', () => {
   it('renders the main nav with aria-current following the hash', async () => {
     window.location.hash = '';
     render(<App client={fakeClient()} />);
-    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const nav = await screen.findByRole('navigation', { name: 'Main' });
     const link = (name: string) => within(nav).getByRole('link', { name });
     expect(link('Monitors')).toHaveAttribute('aria-current', 'page');
     expect(link('Incidents')).not.toHaveAttribute('aria-current');
@@ -79,5 +83,35 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Channels' })).toBeInTheDocument();
     expect(link('Channels')).toHaveAttribute('aria-current', 'page');
     window.location.hash = '';
+  });
+
+  it('shows the signed-in email, the API keys route and logs out', async () => {
+    window.location.hash = '#/settings/api-keys';
+    let finish!: () => void;
+    const logout = vi.fn().mockReturnValue(new Promise<void>((r) => (finish = r)));
+    render(<App client={fakeClient({ logout })} />);
+    expect(await screen.findByText('admin@example.com')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'API keys' })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', {
+        name: 'API keys',
+      }),
+    ).toHaveAttribute('aria-current', 'page');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Log out' }));
+    expect(screen.getByRole('button', { name: 'Logging out…' })).toBeDisabled();
+    finish();
+    expect(await screen.findByRole('heading', { name: 'Sign in to Pulse' })).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/settings/api-keys');
+    window.location.hash = '';
+  });
+
+  it('shows an alert and stays signed in when logout fails', async () => {
+    window.location.hash = '';
+    const logout = vi.fn().mockRejectedValue(new ApiClientError(500, 'INTERNAL_ERROR', 'boom'));
+    render(<App client={fakeClient({ logout })} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Log out' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not log out');
+    expect(screen.getByText('admin@example.com')).toBeInTheDocument();
   });
 });

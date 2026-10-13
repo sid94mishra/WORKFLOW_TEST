@@ -1,0 +1,17 @@
+services:
+  pulse:
+    build: .
+    image: pulse:local
+    ports:
+      - '3000:3000'
+    restart: unless-stopped
+    environment:
+      PULSE_ADMIN_EMAIL: ${PULSE_ADMIN_EMAIL:?set in .env}
+      PULSE_ADMIN_PASSWORD: ${PULSE_ADMIN_PASSWORD:?set in .env}
+      # PULSE_SESSION_SECRET: change-to-a-long-random-value
+      # PULSE_COOKIE_SECURE: auto
+      # PULSE_TRUST_PROXY: "1"
+    volumes:
+      - pulse-data:/data
+volumes:
+  pulse-data:

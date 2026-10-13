@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { IncidentSchema } from '@pulse/shared';
-import { buildApp } from '../src/app.js';
+import { buildTestApp as buildApp } from './helpers.js';
 
 let app: FastifyInstance | undefined;
 const json = (method: 'POST', url: string, payload: unknown) =>

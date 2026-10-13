@@ -7,6 +7,7 @@ describe('parseHash', () => {
     ['#/', { name: 'dashboard' }],
     ['#/incidents', { name: 'incidents' }],
     ['#/channels/', { name: 'channels' }],
+    ['#/settings/api-keys', { name: 'apiKeys' }],
     ['#/monitors/abc', { name: 'monitor', id: 'abc' }],
     ['#/monitors/%E0', { name: 'dashboard' }],
     ['#/nope', { name: 'dashboard' }],

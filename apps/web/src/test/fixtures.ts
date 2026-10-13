@@ -1,6 +1,14 @@
 import { vi } from 'vitest';
 import type { ApiClient } from '../api/client';
-import type { Channel, CheckResult, Incident, Monitor, UptimeSummary } from '../api/types';
+import type {
+  ApiKey,
+  Channel,
+  CheckResult,
+  Incident,
+  Monitor,
+  SessionInfo,
+  UptimeSummary,
+} from '../api/types';
 
 export function makeMonitor(overrides: Partial<Monitor> = {}): Monitor {
   return {
@@ -83,6 +91,28 @@ export function makeChannel(overrides: Partial<Channel> = {}): Channel {
   };
 }
 
+export function makeSession(email = 'admin@example.com'): SessionInfo {
+  return {
+    user: { id: '30000000-0000-4000-8000-000000000001', email },
+    csrfToken: 'csrf-token',
+    expiresAt: '2026-10-18T09:30:00.000Z',
+  };
+}
+
+let kseq = 0;
+export function makeApiKey(overrides: Partial<ApiKey> = {}): ApiKey {
+  kseq += 1;
+  return {
+    id: `40000000-0000-4000-8000-${String(kseq).padStart(12, '0')}`,
+    name: 'CI',
+    scope: 'read',
+    prefix: 'pulse_abc123',
+    createdAt: '2026-10-11T09:30:00.000Z',
+    lastUsedAt: null,
+    ...overrides,
+  };
+}
+
 export function fakeClient(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     health: vi.fn(),
@@ -99,6 +129,14 @@ export function fakeClient(overrides: Partial<ApiClient> = {}): ApiClient {
     updateChannel: vi.fn(),
     deleteChannel: vi.fn(),
     testChannel: vi.fn(),
+    getSession: vi.fn().mockResolvedValue(makeSession()),
+    login: vi.fn(),
+    logout: vi.fn().mockResolvedValue(undefined),
+    listApiKeys: vi.fn().mockResolvedValue([]),
+    createApiKey: vi.fn(),
+    renameApiKey: vi.fn(),
+    revokeApiKey: vi.fn(),
+    setUnauthorizedHandler: vi.fn(),
     ...overrides,
   };
 }

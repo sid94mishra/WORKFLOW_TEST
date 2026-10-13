@@ -8,3 +8,4 @@ export * from './check-result.js';
 export * from './status.js';
 export * from './results.js';
 export * from './api.js';
+export * from './auth.js';
