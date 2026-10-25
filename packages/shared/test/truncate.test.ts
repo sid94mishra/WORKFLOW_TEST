@@ -17,6 +17,10 @@ describe('truncate', () => {
     expect(truncate('😀😀😀', 3)).toBe('😀😀😀');
   });
 
+  it('returns an empty string when max is 0', () => {
+    expect(truncate('abc', 0)).toBe('');
+  });
+
   it('handles tiny and non-positive max', () => {
     expect(truncate('hello', 1)).toBe('…');
     expect(truncate('hello', 0)).toBe('');
