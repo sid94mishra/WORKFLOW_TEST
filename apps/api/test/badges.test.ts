@@ -82,4 +82,34 @@ describe('badges', () => {
     expect((await app.inject('/badge/not-a-uuid.svg')).statusCode).toBe(404);
     expect((await app.inject(`/badge/${publicMonitor.id}.png`)).statusCode).toBe(404);
   });
+
+  it('overrides the left text with label on both badge types, up to 40 characters', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    const monitor = (await create('labelled', true)).json().data;
+    const base = `/badge/${monitor.id}.svg`;
+    const title = async (url: string) => {
+      const res = await app!.inject(url);
+      expect(res.statusCode).toBe(200);
+      return new new JSDOM().window.DOMParser()
+        .parseFromString(res.body, 'image/svg+xml')
+        .querySelector('title')?.textContent;
+    };
+
+    expect(await title(base)).toBe('uptime: n/a');
+    expect(await title(`${base}?type=status`)).toBe('status: pending');
+    expect(await title(`${base}?label=API`)).toBe('API: n/a');
+    expect(await title(`${base}?type=status&label=${encodeURIComponent('My API')}`)).toBe(
+      'My API: pending',
+    );
+    const max = 'x'.repeat(40);
+    expect(await title(`${base}?label=${max}`)).toBe(`${max}: n/a`);
+
+    for (const bad of ['x'.repeat(41), '']) {
+      for (const type of ['uptime', 'status']) {
+        const res = await app.inject(`${base}?type=${type}&label=${bad}`);
+        expect(res.statusCode).toBe(400);
+        expect(res.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+      }
+    }
+  });
 });
