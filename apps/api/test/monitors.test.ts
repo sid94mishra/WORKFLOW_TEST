@@ -66,6 +66,56 @@ describe('monitor collection', () => {
     ]);
   });
 
+  describe('sort query parameter', () => {
+    const names = async (url: string) =>
+      (await app!.inject(url)).json().data.map((monitor: { name: string }) => monitor.name);
+    const seed = async () => {
+      app = await buildApp({ databasePath: ':memory:' });
+      for (const name of ['beta', 'Charlie', 'alpha', 'Bravo', 'Alpha'])
+        await create({ name, url: 'https://example.com' });
+    };
+
+    it('sorts by creation order with sort=created', async () => {
+      await seed();
+      expect(await names('/api/v1/monitors?sort=created')).toEqual([
+        'beta',
+        'Charlie',
+        'alpha',
+        'Bravo',
+        'Alpha',
+      ]);
+    });
+
+    it('defaults to creation order when sort is omitted', async () => {
+      await seed();
+      expect(await names('/api/v1/monitors')).toEqual(await names('/api/v1/monitors?sort=created'));
+    });
+
+    it('sorts case-insensitively by name with sort=name, ties in creation order', async () => {
+      await seed();
+      expect(await names('/api/v1/monitors?sort=name')).toEqual([
+        'alpha',
+        'Alpha',
+        'beta',
+        'Bravo',
+        'Charlie',
+      ]);
+    });
+
+    it.each([
+      ['unknown value', 'sort=newest'],
+      ['wrong case', 'sort=Name'],
+      ['empty value', 'sort='],
+      ['repeated parameter', 'sort=name&sort=created'],
+    ])('rejects %s with VALIDATION_ERROR', async (_label, query) => {
+      app = await buildApp({ databasePath: ':memory:' });
+      const response = await app.inject(`/api/v1/monitors?${query}`);
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.code).toBe('VALIDATION_ERROR');
+      expect(paths(response)).toEqual(['sort']);
+    });
+  });
+
   it('gets a monitor by UUID', async () => {
     app = await buildApp({ databasePath: ':memory:' });
     const monitor = (await create()).json().data;

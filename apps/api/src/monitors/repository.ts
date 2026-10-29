@@ -1,4 +1,4 @@
-import type { Monitor, MonitorCreate, MonitorUpdate } from '@pulse/shared';
+import type { Monitor, MonitorCreate, MonitorSort, MonitorUpdate } from '@pulse/shared';
 import type { SqliteDatabase } from '../db.js';
 
 type Row = {
@@ -33,6 +33,12 @@ const COLUMNS: Record<keyof MonitorUpdate, string> = {
   public: 'public',
 };
 
+/** Fixed ORDER BY clause per sort; ties fall back to creation order. */
+const ORDER_BY: Record<MonitorSort, string> = {
+  created: 'created_at ASC, rowid ASC',
+  name: 'name COLLATE NOCASE ASC, created_at ASC, rowid ASC',
+};
+
 function toMonitor(row: Row): Monitor {
   return {
     id: row.id,
@@ -58,9 +64,9 @@ function toSnapshot(row: Row): MonitorSnapshot {
 export class MonitorRepository {
   constructor(private readonly db: SqliteDatabase) {}
 
-  list(): Monitor[] {
+  list(sort: MonitorSort = 'created'): Monitor[] {
     return (
-      this.db.prepare('SELECT * FROM monitors ORDER BY created_at ASC, rowid ASC').all() as Row[]
+      this.db.prepare(`SELECT * FROM monitors ORDER BY ${ORDER_BY[sort]}`).all() as Row[]
     ).map(toMonitor);
   }
 
