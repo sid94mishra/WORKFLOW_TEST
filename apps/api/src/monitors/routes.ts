@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   MonitorCreateSchema,
+  MonitorsQuerySchema,
   MonitorSchema,
   MonitorUpdateSchema,
   ResultsQuerySchema,
@@ -67,12 +68,21 @@ export function monitorRoutes(
 ): void {
   const findMonitor = (id: string) => (isUuid(id) ? repository.get(id) : undefined);
 
-  app.get('/api/v1/monitors', async () => {
+  app.get('/api/v1/monitors', async (request, reply) => {
+    const query = MonitorsQuerySchema.safeParse(request.query);
+    if (!query.success) return validationFailed(reply, query.error);
     const now = new Date(),
       windows = maintenance?.listRelevant(now.toISOString()) ?? [];
+    const search = query.data.q?.toLowerCase();
     return {
       data: repository
         .list()
+        .filter(
+          (monitor) =>
+            !search ||
+            monitor.name.toLowerCase().includes(search) ||
+            monitor.url.toLowerCase().includes(search),
+        )
         .map((m) => ({ ...m, maintenance: activeWindowFor(m.id, windows, now) })),
     };
   });
