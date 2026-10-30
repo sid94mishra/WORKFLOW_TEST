@@ -107,8 +107,14 @@ export const MonitorUpdateSchema = z
     path: [],
   });
 
+export const MonitorListQuerySchema = z.object({
+  q: z.string().trim().optional(),
+  status: z.enum(['pending', 'up', 'degraded', 'down', 'paused']).optional(),
+});
+
 export type HttpMethod = (typeof HTTP_METHODS)[number];
 export type Monitor = z.infer<typeof MonitorSchema>;
 export type MonitorCreateInput = z.input<typeof MonitorCreateSchema>;
 export type MonitorCreate = z.output<typeof MonitorCreateSchema>;
 export type MonitorUpdate = z.infer<typeof MonitorUpdateSchema>;
+export type MonitorListQuery = z.infer<typeof MonitorListQuerySchema>;
