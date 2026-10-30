@@ -107,6 +107,10 @@ export const MonitorUpdateSchema = z
     path: [],
   });
 
+export const MonitorsQuerySchema = z.object({
+  q: z.string().trim().optional(),
+});
+
 export type HttpMethod = (typeof HTTP_METHODS)[number];
 export type Monitor = z.infer<typeof MonitorSchema>;
 export type MonitorCreateInput = z.input<typeof MonitorCreateSchema>;

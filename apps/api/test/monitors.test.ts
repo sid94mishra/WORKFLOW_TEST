@@ -66,6 +66,31 @@ describe('monitor collection', () => {
     ]);
   });
 
+  it('filters monitors by name or URL, case-insensitively', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    await create({ name: 'Production API', url: 'https://api.example.com/health' });
+    await create({ name: 'Website', url: 'https://pulse.example.com/status' });
+    await create({ name: 'Development API', url: 'https://dev.example.com/health' });
+
+    const names = async (query: string) =>
+      (await app!.inject(`/api/v1/monitors?q=${query}`)).json().data.map((m: { name: string }) =>
+        m.name,
+      );
+
+    expect(await names('api')).toEqual(['Production API', 'Development API']);
+    expect(await names('PULSE.EXAMPLE.COM')).toEqual(['Website']);
+  });
+
+  it('treats an empty search query like an omitted search filter', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    await create({ name: 'One', url: 'https://one.example' });
+    await create({ name: 'Two', url: 'https://two.example' });
+
+    expect((await app.inject('/api/v1/monitors?q=')).json().data).toEqual(
+      (await app.inject('/api/v1/monitors')).json().data,
+    );
+  });
+
   it('gets a monitor by UUID', async () => {
     app = await buildApp({ databasePath: ':memory:' });
     const monitor = (await create()).json().data;
