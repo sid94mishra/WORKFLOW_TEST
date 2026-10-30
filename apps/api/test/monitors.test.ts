@@ -66,6 +66,62 @@ describe('monitor collection', () => {
     ]);
   });
 
+  it('filters monitors by case-insensitive name without changing list ordering', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    await create({ name: 'Alpha API', url: 'https://one.example' });
+    await create({ name: 'Beta', url: 'https://two.example' });
+    await create({ name: 'ALPHA Web', url: 'https://three.example' });
+    const monitors = (await app.inject('/api/v1/monitors?q=alpha')).json().data;
+    expect(monitors.map((monitor: { name: string }) => monitor.name)).toEqual([
+      'Alpha API',
+      'ALPHA Web',
+    ]);
+    expect((await app.inject('/api/v1/monitors?q=')).json().data).toHaveLength(3);
+    expect((await app.inject('/api/v1/monitors?q=missing')).json()).toEqual({ data: [] });
+  });
+
+  it('filters by derived monitor status', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    const pending = (await create({ name: 'Pending', url: 'https://pending.example' })).json().data;
+    const up = (await create({ name: 'Up', url: 'https://up.example' })).json().data;
+    const degraded = (await create({ name: 'Degraded', url: 'https://degraded.example' })).json().data;
+    const down = (await create({ name: 'Down', url: 'https://down.example' })).json().data;
+    const paused = (await create({ name: 'Paused', url: 'https://paused.example' })).json().data;
+    db().db.prepare("UPDATE monitors SET status='up' WHERE id=?").run(up.id);
+    db().db.prepare("UPDATE monitors SET status='degraded' WHERE id=?").run(degraded.id);
+    db().db.prepare("UPDATE monitors SET status='down' WHERE id=?").run(down.id);
+    db().db.prepare("UPDATE monitors SET enabled=0, status='down' WHERE id=?").run(paused.id);
+
+    for (const [status, name] of [
+      ['pending', pending.name],
+      ['up', up.name],
+      ['degraded', degraded.name],
+      ['down', down.name],
+      ['paused', paused.name],
+    ]) {
+      const response = await app.inject(`/api/v1/monitors?status=${status}`);
+      expect(response.json().data.map((monitor: { name: string }) => monitor.name)).toEqual([name]);
+    }
+  });
+
+  it('combines filters, ignores unknown parameters, and rejects non-monitor statuses', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    await create({ name: 'Alpha Up', url: 'https://one.example' });
+    const down = (await create({ name: 'Alpha Down', url: 'https://two.example' })).json().data;
+    await create({ name: 'Beta Down', url: 'https://three.example' });
+    db().db.prepare("UPDATE monitors SET status='down' WHERE id=?").run(down.id);
+
+    const combined = await app.inject('/api/v1/monitors?q=alpha&status=down');
+    expect(combined.json().data.map((monitor: { name: string }) => monitor.name)).toEqual([
+      'Alpha Down',
+    ]);
+    expect((await app.inject('/api/v1/monitors?ignored=value')).json().data).toHaveLength(3);
+
+    const invalid = await app.inject('/api/v1/monitors?status=unknown');
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
   it('gets a monitor by UUID', async () => {
     app = await buildApp({ databasePath: ':memory:' });
     const monitor = (await create()).json().data;

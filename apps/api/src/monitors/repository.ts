@@ -1,4 +1,4 @@
-import type { Monitor, MonitorCreate, MonitorUpdate } from '@pulse/shared';
+import type { Monitor, MonitorCreate, MonitorListQuery, MonitorUpdate } from '@pulse/shared';
 import type { SqliteDatabase } from '../db.js';
 
 type Row = {
@@ -58,9 +58,25 @@ function toSnapshot(row: Row): MonitorSnapshot {
 export class MonitorRepository {
   constructor(private readonly db: SqliteDatabase) {}
 
-  list(): Monitor[] {
+  list(query: MonitorListQuery = {}): Monitor[] {
+    const conditions: string[] = [];
+    const values: string[] = [];
+    if (query.q) {
+      conditions.push('LOWER(name) LIKE ?');
+      values.push(`%${query.q.toLowerCase()}%`);
+    }
+    if (query.status === 'paused') {
+      conditions.push('enabled = 0');
+    } else if (query.status) {
+      conditions.push('enabled = 1', 'status = ?');
+      values.push(query.status);
+    }
     return (
-      this.db.prepare('SELECT * FROM monitors ORDER BY created_at ASC, rowid ASC').all() as Row[]
+      this.db
+        .prepare(
+          `SELECT * FROM monitors${conditions.length ? ` WHERE ${conditions.join(' AND ')}` : ''} ORDER BY created_at ASC, rowid ASC`,
+        )
+        .all(...values) as Row[]
     ).map(toMonitor);
   }
 
