@@ -106,9 +106,14 @@ export const MonitorUpdateSchema = z
     message: 'at least one field is required',
     path: [],
   });
+export const MonitorListQuerySchema = z.object({
+  q: z.string().trim().optional(),
+  status: MonitorStatusSchema.optional(),
+});
 
 export type HttpMethod = (typeof HTTP_METHODS)[number];
 export type Monitor = z.infer<typeof MonitorSchema>;
 export type MonitorCreateInput = z.input<typeof MonitorCreateSchema>;
 export type MonitorCreate = z.output<typeof MonitorCreateSchema>;
+export type MonitorListQuery = z.infer<typeof MonitorListQuerySchema>;
 export type MonitorUpdate = z.infer<typeof MonitorUpdateSchema>;

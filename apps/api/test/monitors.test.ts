@@ -66,6 +66,79 @@ describe('monitor collection', () => {
     ]);
   });
 
+  it('filters monitors by a case-insensitive partial name', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    await create({ name: 'Production API', url: 'https://production.example' });
+    await create({ name: 'Staging API', url: 'https://staging.example' });
+    const response = await app.inject('/api/v1/monitors?q=DuCtIoN');
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.map((monitor: { name: string }) => monitor.name)).toEqual([
+      'Production API',
+    ]);
+  });
+
+  it('trims surrounding spaces from the name filter', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    await create({ name: 'Production API', url: 'https://production.example' });
+    const response = await app.inject('/api/v1/monitors?q=%20Production%20');
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.map((monitor: { name: string }) => monitor.name)).toEqual([
+      'Production API',
+    ]);
+  });
+
+  it.each(['pending', 'up', 'degraded', 'down'] as const)(
+    'filters monitors by status %s',
+    async (status) => {
+      app = await buildApp({ databasePath: ':memory:' });
+      const monitor = (await create({ name: status, url: `https://${status}.example` })).json()
+        .data;
+      db().db.prepare('UPDATE monitors SET status = ? WHERE id = ?').run(status, monitor.id);
+      const response = await app.inject(`/api/v1/monitors?status=${status}`);
+      expect(response.statusCode).toBe(200);
+      expect(response.json().data.map((item: { id: string }) => item.id)).toEqual([monitor.id]);
+    },
+  );
+
+  it('combines name and status filters', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    const target = (
+      await create({ name: 'Production API', url: 'https://production.example' })
+    ).json().data;
+    const other = (
+      await create({ name: 'Production Worker', url: 'https://worker.example' })
+    ).json().data;
+    db().db.prepare('UPDATE monitors SET status = ? WHERE id = ?').run('up', target.id);
+    db().db.prepare('UPDATE monitors SET status = ? WHERE id = ?').run('down', other.id);
+    const response = await app.inject('/api/v1/monitors?q=production&status=up');
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.map((monitor: { id: string }) => monitor.id)).toEqual([target.id]);
+  });
+
+  it('returns an empty list when no monitors match filters', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    await create();
+    const response = await app.inject('/api/v1/monitors?q=missing&status=down');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ data: [] });
+  });
+
+  it('ignores unknown collection query parameters', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    await create();
+    const response = await app.inject('/api/v1/monitors?unknown=value');
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toHaveLength(1);
+  });
+
+  it('rejects an invalid collection status filter', async () => {
+    app = await buildApp({ databasePath: ':memory:' });
+    const response = await app.inject('/api/v1/monitors?status=paused');
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe('VALIDATION_ERROR');
+    expect(paths(response)).toContain('status');
+  });
+
   it('gets a monitor by UUID', async () => {
     app = await buildApp({ databasePath: ':memory:' });
     const monitor = (await create()).json().data;

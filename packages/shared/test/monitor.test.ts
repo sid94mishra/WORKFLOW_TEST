@@ -3,6 +3,7 @@ import {
   CheckOutcomeSchema,
   CheckResultSchema,
   MonitorCreateSchema,
+  MonitorListQuerySchema,
   MonitorSchema,
   MonitorUpdateSchema,
 } from '../src/index.js';
@@ -111,6 +112,19 @@ describe('MonitorUpdateSchema', () => {
     expect(MonitorUpdateSchema.parse({ name: 'x' })).toEqual({ name: 'x' }));
   it('rejects unknown keys', () =>
     expect(MonitorUpdateSchema.safeParse({ name: 'x', id: 'y' }).success).toBe(false));
+});
+
+describe('MonitorListQuerySchema', () => {
+  it('accepts name and status filters', () =>
+    expect(MonitorListQuerySchema.parse({ q: 'Example', status: 'up' })).toEqual({
+      q: 'Example',
+      status: 'up',
+    }));
+  it.each(['pending', 'up', 'degraded', 'down'])('accepts monitor status %s', (status) =>
+    expect(MonitorListQuerySchema.safeParse({ status }).success).toBe(true),
+  );
+  it('rejects an invalid status', () =>
+    expect(MonitorListQuerySchema.safeParse({ status: 'paused' }).success).toBe(false));
 });
 
 describe('CheckResultSchema', () => {
